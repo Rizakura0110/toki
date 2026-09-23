@@ -36,14 +36,14 @@ describe("Phase 36 local D1 connectivity stub", () => {
       "http://localhost.evil.example/__local/db",
       "enabled",
     ],
-    ["the path is not the exact probe path", "http://localhost:8787/", "enabled"],
+    ["the path is not the exact probe path", "http://localhost:8787/no-probe", "enabled"],
   ])("fails closed when %s", async (_description, url, flag) => {
     const { prepare } = bindings();
     const testBindings: LocalBindings =
       flag === undefined ? { DB: { prepare } } : { DB: { prepare }, LOCAL_STUB_MODE: flag };
     const response = await handleRequest(new Request(url), testBindings);
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(url.endsWith("/no-probe") ? 403 : 503);
     expect(await response.text()).toBe("Unavailable");
     expect(prepare).not.toHaveBeenCalled();
   });
@@ -81,5 +81,69 @@ describe("Phase 36 local D1 connectivity stub", () => {
 
     expect(response.status).toBe(503);
     expect(await response.text()).toBe("Unavailable");
+  });
+});
+
+describe("Phase 38 static screen perimeter", () => {
+  const localPage = "http://127.0.0.1:8787/";
+
+  it("serves a local-only authenticated screen with security headers", async () => {
+    const fetch = vi.fn(
+      async () => new Response("<html>Toki</html>", { headers: { "Content-Type": "text/html" } }),
+    );
+    const response = await handleRequest(new Request(localPage), {
+      LOCAL_AUTH_BYPASS: "enabled",
+      ASSETS: { fetch },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("Toki");
+    expect(response.headers.get("Content-Security-Policy")).toContain("script-src 'self'");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("X-Frame-Options")).toBe("DENY");
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it("denies an anonymous page and never delegates it to the asset worker", async () => {
+    const fetch = vi.fn(async () => new Response("<html>Toki</html>"));
+    const response = await handleRequest(new Request("https://toki.example/"), {
+      ASSETS: { fetch },
+    });
+    expect(response.status).toBe(403);
+    expect(await response.text()).not.toContain("Toki");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("never applies the loopback bypass to a remote or HTTPS origin", async () => {
+    const fetch = vi.fn(async () => new Response("secret"));
+    const remote = await handleRequest(new Request("https://toki.example/app.js"), {
+      LOCAL_AUTH_BYPASS: "enabled",
+      ASSETS: { fetch },
+    });
+    const httpsLocal = await handleRequest(new Request("https://localhost/app.js"), {
+      LOCAL_AUTH_BYPASS: "enabled",
+      ASSETS: { fetch },
+    });
+    expect([remote.status, httpsLocal.status]).toEqual([403, 403]);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 for unrecognized assets and 503 when the asset binding is absent", async () => {
+    const fetch = vi.fn(async () => new Response("fallback"));
+    const unknown = await handleRequest(new Request(`${localPage}unknown`), {
+      LOCAL_AUTH_BYPASS: "enabled",
+      ASSETS: { fetch },
+    });
+    const missing = await handleRequest(new Request(localPage), { LOCAL_AUTH_BYPASS: "enabled" });
+    expect([unknown.status, missing.status]).toEqual([404, 503]);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not serve a page for a mutation and always routes API before assets", async () => {
+    const fetch = vi.fn(async () => new Response("fallback"));
+    const bindings = { LOCAL_AUTH_BYPASS: "enabled", ASSETS: { fetch } };
+    const mutation = await handleRequest(new Request(localPage, { method: "POST" }), bindings);
+    const api = await handleRequest(new Request(`${localPage}api/v1/session`), bindings);
+    expect([mutation.status, api.status]).toEqual([405, 503]);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

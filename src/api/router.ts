@@ -16,15 +16,11 @@ import {
   stopSession,
   TokiDataError,
 } from "../data/records";
-import {
-  AccessAuthError,
-  type AccessAuthBindings,
-  authenticateAccessRequest,
-} from "../security/access";
+import { AccessAuthError } from "../security/access";
+import { authorizeRequest, type RequestAuthBindings } from "../security/request";
 
-export type ApiBindings = AccessAuthBindings & {
+export type ApiBindings = RequestAuthBindings & {
   readonly DB?: D1Database;
-  readonly LOCAL_AUTH_BYPASS?: string;
 };
 
 const JSON_HEADERS = {
@@ -42,10 +38,6 @@ function json(status: number, body: unknown): Response {
 
 function error(status: number, code: string): Response {
   return json(status, { error: { code } });
-}
-
-function isLoopback(url: URL): boolean {
-  return url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
 }
 
 function isMutation(request: Request): boolean {
@@ -88,9 +80,7 @@ export async function handleApiRequest(request: Request, bindings: ApiBindings):
   if (!url.pathname.startsWith("/api/v1/")) return error(404, "NOT_FOUND");
 
   try {
-    if (!(bindings.LOCAL_AUTH_BYPASS === "enabled" && isLoopback(url))) {
-      await authenticateAccessRequest(request, bindings);
-    }
+    await authorizeRequest(request, bindings);
   } catch (cause) {
     if (cause instanceof AccessAuthError) return error(cause.status, cause.code);
     return error(401, "UNAUTHORIZED");

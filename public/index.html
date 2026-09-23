@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f6f5f0" />
+    <title>Toki — 時間を記録する</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <div id="normal-view">
+      <header class="site-header">
+        <div class="site-header-inner">
+          <div class="brand">
+            <span class="brand-mark" aria-hidden="true"></span>
+            <span>Toki</span>
+          </div>
+          <span class="header-caption">時間を、見えるかたちに。</span>
+        </div>
+      </header>
+
+      <main class="shell">
+        <div class="intro">
+          <p class="eyebrow">YOUR TIME, YOUR STORY</p>
+          <h1>今日の時間を記録する</h1>
+          <p>まずは測る。終わったら、その時間にしたことを残しましょう。</p>
+        </div>
+
+        <div id="notice" class="message message-success" role="status" hidden></div>
+        <div id="sync-error" class="message message-error" role="alert" hidden>
+          <p id="sync-error-text"></p>
+          <button id="retry-sync" class="text-button" type="button">状態を確認</button>
+        </div>
+
+        <div class="content-grid">
+          <div class="primary-column">
+            <section id="loading-panel" class="card state-card" aria-label="状態を読み込み中">
+              <span class="loading-dot" aria-hidden="true"></span>
+              <p>計測の状態を確認しています…</p>
+            </section>
+
+            <section id="idle-panel" class="card state-card" aria-labelledby="idle-title" hidden>
+              <div class="card-heading">
+                <span class="step-number" aria-hidden="true">01</span>
+                <div>
+                  <p class="card-kicker">START A SESSION</p>
+                  <h2 id="idle-title">計測を始める</h2>
+                </div>
+              </div>
+
+              <form id="start-form">
+                <fieldset class="mode-fieldset">
+                  <legend>計測方法</legend>
+                  <div class="mode-options">
+                    <label class="mode-option">
+                      <input type="radio" name="mode" value="stopwatch" checked />
+                      <span>
+                        <strong>ストップウォッチ</strong>
+                        <small>経過した時間を測る</small>
+                      </span>
+                    </label>
+                    <label class="mode-option">
+                      <input type="radio" name="mode" value="timer" />
+                      <span>
+                        <strong>タイマー</strong>
+                        <small>決めた時間を測る</small>
+                      </span>
+                    </label>
+                  </div>
+                </fieldset>
+
+                <fieldset id="timer-inputs" class="duration-fieldset" hidden>
+                  <legend>設定時間</legend>
+                  <div class="duration-inputs">
+                    <label>
+                      <span>時間</span>
+                      <input id="timer-hours" type="number" inputmode="numeric" min="0" max="24" step="1" value="0" />
+                    </label>
+                    <label>
+                      <span>分</span>
+                      <input id="timer-minutes" type="number" inputmode="numeric" min="0" max="59" step="1" value="25" />
+                    </label>
+                    <label>
+                      <span>秒</span>
+                      <input id="timer-seconds" type="number" inputmode="numeric" min="0" max="59" step="1" value="0" />
+                    </label>
+                  </div>
+                  <p class="field-help">1秒から24時間まで設定できます。</p>
+                </fieldset>
+
+                <button id="start-button" class="button button-primary button-wide" type="submit">
+                  計測を始める <span aria-hidden="true">→</span>
+                </button>
+              </form>
+            </section>
+
+            <section id="running-panel" class="card state-card running-card" aria-labelledby="running-title" hidden>
+              <div class="card-heading">
+                <span class="step-number step-number-active" aria-hidden="true">02</span>
+                <div>
+                  <p class="card-kicker">IN PROGRESS</p>
+                  <h2 id="running-title">計測中</h2>
+                </div>
+                <span class="live-badge"><span class="live-dot" aria-hidden="true"></span>計測中</span>
+              </div>
+
+              <div class="time-stage">
+                <p id="running-time-label" class="time-label">経過時間</p>
+                <output id="running-time" class="time-value" role="timer" aria-live="off">00:00:00</output>
+                <p id="running-detail" class="time-detail"></p>
+              </div>
+
+              <div class="running-actions">
+                <button id="enter-focus" class="button button-outline" type="button">時間だけ表示</button>
+                <button id="stop-button" class="button button-primary" type="button">計測を終了</button>
+              </div>
+              <p class="quiet-note">この画面を閉じても計測は続きます。一時停止はできません。</p>
+            </section>
+
+            <section id="description-panel" class="card state-card" aria-labelledby="description-title" hidden>
+              <div class="card-heading">
+                <span class="step-number step-number-active" aria-hidden="true">03</span>
+                <div>
+                  <p class="card-kicker">FINISH THE STORY</p>
+                  <h2 id="description-title">何をしていましたか？</h2>
+                </div>
+              </div>
+
+              <div class="finished-summary">
+                <span>計測した時間</span>
+                <strong id="finished-time">00:00:00</strong>
+              </div>
+
+              <form id="save-form">
+                <label class="description-label" for="description">この時間にしたこと</label>
+                <textarea id="description" rows="4" maxlength="500" required placeholder="例：本を読む、企画を考える、散歩をする"></textarea>
+                <div class="description-meta">
+                  <p>保存すると、カレンダーに記録されます。</p>
+                  <output id="description-count" for="description">0 / 500</output>
+                </div>
+                <div class="save-actions">
+                  <button id="save-button" class="button button-primary" type="submit">記録を保存</button>
+                  <button id="discard-button" class="button button-quiet" type="button">保存せず破棄</button>
+                </div>
+              </form>
+            </section>
+          </div>
+
+          <aside class="guide-card" aria-labelledby="guide-title">
+            <p class="guide-eyebrow">HOW IT WORKS</p>
+            <h2 id="guide-title">時間の輪郭を、<br />少しずつ。</h2>
+            <ol class="guide-steps">
+              <li><span aria-hidden="true">1</span><div><strong>測る</strong><p>時間を決めても、決めなくても。</p></div></li>
+              <li><span aria-hidden="true">2</span><div><strong>残す</strong><p>終わったら、その時間の内容をひと言。</p></div></li>
+              <li><span aria-hidden="true">3</span><div><strong>振り返る</strong><p>保存した記録をカレンダーで見返せます。</p></div></li>
+            </ol>
+            <p class="guide-note">計測中の時刻はサーバーに保存されます。表示は端末内で更新するため、毎秒の通信はありません。</p>
+          </aside>
+        </div>
+      </main>
+    </div>
+
+    <div id="focus-view" hidden>
+      <button id="exit-focus" class="focus-exit" type="button">
+        <output id="focus-time" class="focus-time" role="timer" aria-live="off">00:00:00</output>
+        <span class="sr-only">時間を押すか、Escapeキーで通常画面に戻ります。</span>
+      </button>
+    </div>
+  </body>
+</html>
