@@ -1,0 +1,32 @@
+packages:
+  - .
+
+registries:
+  default: https://registry.npmjs.org/
+
+overrides:
+  'rolldown@': 1.2.4
+  'miniflare@5.20260815.0-alpha>sharp': 0.35.4
+
+storeDir: .pnpm-store
+cacheDir: .cache/pnpm
+savePrefix: ''
+engineStrict: true
+autoInstallPeers: false
+strictPeerDependencies: true
+
+minimumReleaseAge: 10080
+minimumReleaseAgeIgnoreMissingTime: false
+minimumReleaseAgeStrict: true
+blockExoticSubdeps: true
+trustPolicy: no-downgrade
+trustLockfile: false
+
+verifyStoreIntegrity: true
+strictStorePkgContentCheck: true
+strictDepBuilds: true
+dangerouslyAllowAllBuilds: false
+allowBuilds:
+  'esbuild@0.18.20 || 0.25.12 || 0.28.1 || 0.28.2': true
+  'workerd@1.20260815.1': true
+updateNotifier: false

@@ -1,0 +1,34 @@
+{
+  "name": "toki",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local --var LOCAL_STUB_MODE:enabled",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "lint": "biome lint .",
+    "cf:typegen": "wrangler types --env-interface TokiBindings",
+    "cf:typecheck": "wrangler types --env-interface TokiBindings --check",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "boundaries": "node scripts/check-boundaries.mjs",
+    "db:verify:local": "wrangler d1 execute DB --local --command \"SELECT 1 AS ready\"",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "audit": "pnpm audit --audit-level high",
+    "check": "pnpm boundaries && pnpm format:check && pnpm lint && pnpm cf:typecheck && pnpm typecheck && pnpm test:coverage && pnpm db:verify:local && pnpm build && pnpm audit"
+  },
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "packageManager": "pnpm@11.22.0",
+  "devDependencies": {
+    "@biomejs/biome": "2.5.9",
+    "@types/node": "24.13.3",
+    "@vitest/coverage-v8": "4.1.11",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11",
+    "wrangler": "4.124.0"
+  }
+}
