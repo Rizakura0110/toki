@@ -4,25 +4,31 @@ import { fileURLToPath } from "node:url";
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const sourceDir = join(repositoryRoot, "src");
-const sourceFiles = readdirSync(sourceDir).filter((name) => name.endsWith(".ts"));
-const checkedFiles = [
-  ...sourceFiles.map((name) => join(sourceDir, name)),
-  join(repositoryRoot, "package.json"),
-  join(repositoryRoot, "wrangler.jsonc"),
-];
+function sourceFiles(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) return sourceFiles(path);
+    return entry.isFile() && /\.[cm]?[jt]sx?$/u.test(entry.name) ? [path] : [];
+  });
+}
+
+const checkedFiles = [...sourceFiles(sourceDir), join(repositoryRoot, "package.json")];
 
 for (const path of checkedFiles) {
   const contents = readFileSync(path, "utf8");
-  if (
-    /@rizakura-hontai\/|modules\/(?:daymark|tech-inbox)|database_id|APP_ORIGIN|POLICY_AUD|ALLOWED_EMAIL/u.test(
-      contents,
-    )
-  ) {
-    throw new Error(`Toki independence or non-sensitive config boundary failed: ${path}`);
+  if (/@rizakura-hontai\/|modules\/(?:daymark|tech-inbox)|database_id/u.test(contents)) {
+    throw new Error(`Toki independence boundary failed: ${path}`);
   }
 }
 
 const wrangler = JSON.parse(readFileSync(join(repositoryRoot, "wrangler.jsonc"), "utf8"));
+if (
+  /(?:TEAM_DOMAIN|POLICY_AUD|ALLOWED_EMAIL|LOCAL_AUTH_BYPASS|database_id)/u.test(
+    readFileSync(join(repositoryRoot, "wrangler.jsonc"), "utf8"),
+  )
+) {
+  throw new Error("Toki Worker configuration must not contain auth values or a remote D1 ID.");
+}
 if (wrangler.workers_dev !== false || wrangler.preview_urls !== false) {
   throw new Error("Phase 36 Worker must have no public workers.dev or preview URL.");
 }

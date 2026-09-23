@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev --local --var LOCAL_STUB_MODE:enabled",
+    "dev": "wrangler dev --local --var LOCAL_STUB_MODE:enabled --var LOCAL_AUTH_BYPASS:enabled",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "lint": "biome lint .",
@@ -14,15 +14,20 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "boundaries": "node scripts/check-boundaries.mjs",
-    "db:verify:local": "wrangler d1 execute DB --local --command \"SELECT 1 AS ready\"",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:verify:local": "wrangler d1 execute DB --local --command \"SELECT COUNT(*) AS records FROM time_sessions\"",
     "build": "wrangler deploy --dry-run --outdir dist",
     "audit": "pnpm audit --audit-level high",
-    "check": "pnpm boundaries && pnpm format:check && pnpm lint && pnpm cf:typecheck && pnpm typecheck && pnpm test:coverage && pnpm db:verify:local && pnpm build && pnpm audit"
+    "check": "pnpm boundaries && pnpm format:check && pnpm lint && pnpm cf:typecheck && pnpm typecheck && pnpm test:coverage && pnpm db:migrate:local && pnpm db:verify:local && pnpm build && pnpm audit"
   },
   "engines": {
     "node": ">=24 <25"
   },
   "packageManager": "pnpm@11.22.0",
+  "dependencies": {
+    "jose": "6.2.9",
+    "zod": "4.4.3"
+  },
   "devDependencies": {
     "@biomejs/biome": "2.5.9",
     "@types/node": "24.13.3",

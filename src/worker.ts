@@ -1,3 +1,5 @@
+import { handleApiRequest, type ApiBindings } from "./api/router";
+
 type D1Probe = {
   prepare(sql: string): {
     first<Row>(): Promise<Row | null>;
@@ -7,7 +9,7 @@ type D1Probe = {
 export type LocalBindings = {
   readonly DB?: D1Probe;
   readonly LOCAL_STUB_MODE?: string;
-};
+} & Omit<ApiBindings, "DB">;
 
 const PROBE_PATH = "/__local/db";
 const PROBE_SQL = "SELECT 1 AS ready";
@@ -27,6 +29,9 @@ function isLoopback(url: URL): boolean {
 
 export async function handleRequest(request: Request, bindings: LocalBindings): Promise<Response> {
   const url = new URL(request.url);
+  if (url.pathname.startsWith("/api/v1/")) {
+    return handleApiRequest(request, bindings as ApiBindings);
+  }
   if (
     bindings.LOCAL_STUB_MODE !== "enabled" ||
     !isLoopback(url) ||

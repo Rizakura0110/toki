@@ -4,7 +4,7 @@ Tokiは、ストップウォッチ・タイマーで測った時間に行動内�
 
 ## 現在の状態
 
-Phase 36では独立した開発環境と、認証前に公開機能を返さないWorker、ローカルD1の接続検査だけを用意します。計測・カレンダーのテーブル/API、画面、PWA、Cloudflare Access、本番Worker/DBはまだありません。Workerの通常応答は`503`です。`/__local/db`はローカル起動時にだけ明示的な変数で有効化する接続検査で、業務データは返しません。
+Phase 37では独立したAccess JWT検証、ローカルD1の計測schema、計測・記録APIを実装しました。画面、PWA、Cloudflare Access application、本番Worker/DBはまだありません。通常の画面応答は`503`です。`/__local/db`はローカル起動時にだけ明示的な変数で有効化する接続検査で、業務データは返しません。
 
 製品仕様とフェーズ計画は基盤repositoryの`docs/toki-design.md`・`docs/toki-roadmap.md`を正とします。このrepositoryへ基盤/Tech Inbox/Daymarkのsourceをコピーしたり、実データやCloudflare資格情報を追加したりしません。
 
@@ -17,6 +17,6 @@ pnpm install --frozen-lockfile
 pnpm check
 ```
 
-`pnpm check`はformat、lint、生成型、TypeScript、coverage付きtest、local D1の`SELECT 1`、Worker dry-run build、依存監査を実行します。Cloudflareのremote DBやWorkerは作成・変更しません。
+`pnpm check`はformat、lint、生成型、TypeScript、coverage付きtest、local D1 migrationと`time_sessions`検査、Worker dry-run build、依存監査を実行します。Cloudflareのremote DBやWorkerは作成・変更しません。
 
-必要な場合に限り、`pnpm dev`でローカルWorkerを起動できます。`/__local/db`はローカル開発用で、通常のrouteは安全側に閉じています。`.dev.vars`や`.env`は追跡しません。Phase 37以降に認証と業務APIを加える際も、本人限定Accessに加えてWorkerでJWTを検証します。
+必要な場合に限り、`pnpm dev`でローカルWorkerを起動できます。`/__local/db`とAPIの認証バイパスは明示的なローカル起動引数かつloopback HTTPに限定します。`.dev.vars`や`.env`は追跡しません。本番APIは本人限定Accessに加えてWorkerでJWTを検証します。
