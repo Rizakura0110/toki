@@ -15,6 +15,8 @@
     "test:coverage": "vitest run --coverage",
     "e2e": "playwright test",
     "boundaries": "node scripts/check-boundaries.mjs",
+    "production:config:stage": "node scripts/prepare-production-config.mjs stage",
+    "production:config:live": "node scripts/prepare-production-config.mjs live",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:verify:local": "wrangler d1 execute DB --local --command \"SELECT COUNT(*) AS records FROM time_sessions\"",
     "build": "wrangler deploy --dry-run --outdir dist",
