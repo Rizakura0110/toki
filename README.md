@@ -4,7 +4,7 @@ Tokiは、ストップウォッチ・タイマーで測った時間に行動内�
 
 ## 現在の状態
 
-Phase 40では独立したAccess JWT検証、ローカルD1の計測schema/API、ストップウォッチ・タイマーの計測画面、アプリ内の日・週カレンダーと記録編集に加え、Toki専用PWAのmanifest・アイコンを実装しました。スマートフォンのホーム画面起動用で、オフライン保存やService Workerは設けません。Cloudflare Access application、本番Worker/DBはまだありません。画面・manifest・アイコンもWorkerの認証を通った場合だけ配信します。`/__local/db`はローカル起動時にだけ明示的な変数で有効化する接続検査で、業務データは返しません。
+Phase 41では独立したAccess JWT検証、ローカルD1の計測schema/API、ストップウォッチ・タイマーの計測画面、アプリ内の日・週カレンダーと記録編集、Toki専用PWAのmanifest・アイコン、基盤への戻りリンクまでローカル実装しました。基盤との通信は行わず、ページ遷移だけです。スマートフォンのホーム画面起動用で、オフライン保存やService Workerは設けません。Cloudflare Access application、本番Worker/DBはまだありません。画面・manifest・アイコンもWorkerの認証を通った場合だけ配信します。`/__local/db`はローカル起動時にだけ明示的な変数で有効化する接続検査で、業務データは返しません。
 
 製品仕様とフェーズ計画は基盤repositoryの`docs/toki-design.md`・`docs/toki-roadmap.md`を正とします。このrepositoryへ基盤/Tech Inbox/Daymarkのsourceをコピーしたり、実データやCloudflare資格情報を追加したりしません。
 

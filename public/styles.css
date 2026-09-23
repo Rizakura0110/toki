@@ -66,6 +66,27 @@ a:focus-visible {
 }
 .site-header-inner > nav {
   min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.portal-return {
+  padding: 10px 2px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.portal-return:hover {
+  color: var(--coral-dark);
+  text-decoration: underline;
+}
+.portal-return:focus-visible {
+  outline: 3px solid #258ec7;
+  outline-offset: 3px;
 }
 .brand {
   display: inline-flex;
@@ -702,6 +723,10 @@ textarea::placeholder {
   .site-header-inner > nav .button {
     width: 100%;
     min-height: 44px;
+  }
+  .site-header-inner > nav .portal-return {
+    flex-basis: 100%;
+    text-align: left;
   }
 }
 
