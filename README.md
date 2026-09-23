@@ -4,7 +4,7 @@ Tokiは、ストップウォッチ・タイマーで測った時間に行動内�
 
 ## 現在の状態
 
-Phase 42までに独立したAccess JWT検証、ローカルD1の計測schema/API、ストップウォッチ・タイマーの計測画面、アプリ内の日・週カレンダーと記録編集、Toki専用PWAのmanifest・アイコン、基盤への戻りリンクを実装し、単体・ローカルブラウザE2Eで検証しました。Phase 43ではToki専用D1・Worker・本人限定Accessを設定し、[本番URL](https://toki.sx7k2p9q.workers.dev/)を公開しました。PCで計測・保存・編集・タイマーを確認済みで、iPhone PWAの実機確認は進行中です。基盤との通信は行わず、ページ遷移だけです。スマートフォンのホーム画面起動用で、オフライン保存やService Workerは設けません。画面・manifest・アイコンもWorkerの認証を通った場合だけ配信します。`/__local/db`はローカル起動時にだけ明示的な変数で有効化する接続検査で、業務データは返しません。
+Phase 42までに独立したAccess JWT検証、ローカルD1の計測schema/API、ストップウォッチ・タイマーの計測画面、アプリ内の日・週カレンダーと記録編集、Toki専用PWAのmanifest・アイコン、基盤への戻りリンクを実装し、単体・ローカルブラウザE2Eで検証しました。Phase 43ではToki専用D1・Worker・本人限定Accessを設定し、[本番URL](https://toki.sx7k2p9q.workers.dev/)を公開しました。所有者はPCで計測・保存・編集・タイマーを、iPhoneのホーム画面から起動するPWAで計測・保存・編集・再起動後の記録保持を確認しました。基盤入口とTokiの往復、Tech Inbox・Daymarkの表示も確認済みです。基盤との通信は行わず、ページ遷移だけです。スマートフォンのホーム画面起動用で、オフライン保存やService Workerは設けません。画面・manifest・アイコンもWorkerの認証を通った場合だけ配信します。`/__local/db`はローカル起動時にだけ明示的な変数で有効化する接続検査で、業務データは返しません。
 
 製品仕様とフェーズ計画は基盤repositoryの`docs/toki-design.md`・`docs/toki-roadmap.md`を正とします。このrepositoryへ基盤/Tech Inbox/Daymarkのsourceをコピーしたり、実データやCloudflare資格情報を追加したりしません。
 
