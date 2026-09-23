@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f6f5f0" />
+    <title>記録カレンダー — Toki</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/calendar.css" />
+    <script type="module" src="/calendar.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand calendar-brand" href="/" aria-label="Toki の計測画面へ">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span>Toki</span>
+        </a>
+        <nav aria-label="Toki のページ">
+          <a class="button button-outline" href="/">計測画面へ <span aria-hidden="true">→</span></a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="shell calendar-shell">
+      <div class="calendar-intro">
+        <div>
+          <p class="eyebrow">THE SHAPE OF YOUR DAY</p>
+          <h1>時間の記録</h1>
+          <p>測った時間を、日付とともに振り返る。</p>
+        </div>
+        <div class="calendar-intro-mark" aria-hidden="true">T.</div>
+      </div>
+
+      <div id="calendar-notice" class="message message-success" role="status" hidden></div>
+      <div id="calendar-error" class="message message-error" role="alert" hidden>
+        <p id="calendar-error-text"></p>
+        <button id="calendar-retry" class="text-button" type="button">再読み込み</button>
+      </div>
+
+      <section class="calendar-panel" aria-label="カレンダーの操作">
+        <div class="calendar-period">
+          <p class="calendar-period-kicker">CALENDAR</p>
+          <h2 id="period-label" aria-live="polite">読み込み中</h2>
+          <p id="record-count" class="calendar-count">記録を確認しています…</p>
+        </div>
+        <div class="calendar-controls">
+          <fieldset class="view-switch">
+            <legend class="sr-only">表示単位</legend>
+            <button id="day-view" type="button" aria-pressed="false">日</button>
+            <button id="week-view" type="button" aria-pressed="false">週</button>
+          </fieldset>
+          <fieldset class="date-nav">
+            <legend class="sr-only">日付の移動</legend>
+            <button id="previous-period" class="nav-button" type="button" aria-label="前の期間">‹</button>
+            <button id="today-period" class="today-button" type="button">今日</button>
+            <button id="next-period" class="nav-button" type="button" aria-label="次の期間">›</button>
+          </fieldset>
+          <label class="calendar-date-field" for="calendar-date">
+            <span class="sr-only">表示する日付</span>
+            <input id="calendar-date" type="date" min="1970-01-02" max="9999-12-31" />
+          </label>
+        </div>
+      </section>
+
+      <section class="calendar-card" aria-labelledby="timeline-title">
+        <div class="calendar-section-heading">
+          <div>
+            <p class="card-kicker">TIMELINE</p>
+            <h2 id="timeline-title">タイムライン</h2>
+          </div>
+          <p>表示・編集は日本時間</p>
+        </div>
+        <div id="calendar-loading" class="calendar-state" role="status">
+          <span class="loading-dot" aria-hidden="true"></span>
+          記録を読み込んでいます…
+        </div>
+        <p id="calendar-empty" class="calendar-empty" hidden>
+          この期間の記録はまだありません。計測を保存すると、ここに表示されます。
+        </p>
+        <div id="timeline-scroller" class="timeline-scroller" hidden>
+          <div id="timeline-inner" class="timeline-inner"></div>
+        </div>
+      </section>
+
+      <section class="calendar-card record-section" aria-labelledby="records-title">
+        <div class="calendar-section-heading">
+          <div>
+            <p class="card-kicker">RECORDED MOMENTS</p>
+            <h2 id="records-title">記録一覧</h2>
+          </div>
+          <p>記録を選ぶと編集できます</p>
+        </div>
+        <ul id="records-list" class="records-list"></ul>
+      </section>
+    </main>
+
+    <dialog id="edit-dialog" class="edit-dialog" aria-labelledby="edit-title">
+      <form id="edit-form" novalidate>
+        <div class="edit-header">
+          <p class="card-kicker">EDIT A RECORD</p>
+          <h2 id="edit-title">記録を編集</h2>
+          <p>日時と内容を修正できます。ほかの記録と時間が重なっても保存できます。</p>
+        </div>
+        <div class="edit-fields">
+          <label for="edit-start">開始日時 <span>日本時間</span></label>
+          <input id="edit-start" type="datetime-local" step="1" required />
+          <label for="edit-end">終了日時 <span>日本時間</span></label>
+          <input id="edit-end" type="datetime-local" step="1" required />
+          <label for="edit-description">この時間にしたこと</label>
+          <textarea id="edit-description" rows="4" maxlength="500" required></textarea>
+          <p class="edit-help">内容は1〜500文字、1件の時間は最大366日です。</p>
+        </div>
+        <div id="edit-error" class="edit-error" role="alert" hidden>
+          <p id="edit-error-text"></p>
+          <button id="edit-reload" class="text-button" type="button" hidden>記録を再読み込み</button>
+        </div>
+        <div class="edit-actions">
+          <button id="edit-cancel" class="button button-quiet" type="button">キャンセル</button>
+          <button id="edit-save" class="button button-primary" type="submit">変更を保存</button>
+        </div>
+      </form>
+    </dialog>
+  </body>
+</html>

@@ -21,7 +21,16 @@ const RESPONSE_HEADERS = {
   "Content-Type": "text/plain; charset=utf-8",
   "X-Content-Type-Options": "nosniff",
 };
-const STATIC_PATHS = new Set(["/", "/index.html", "/app.js", "/styles.css"]);
+const STATIC_PATHS = new Set([
+  "/",
+  "/index.html",
+  "/app.js",
+  "/styles.css",
+  "/calendar.html",
+  "/calendar.js",
+  "/calendar.css",
+  "/calendar-core.js",
+]);
 const STATIC_SECURITY_HEADERS = {
   "Cache-Control": "no-store",
   "Content-Security-Policy":
@@ -57,7 +66,10 @@ async function handleStatic(request: Request, bindings: LocalBindings): Promise<
   if (bindings.ASSETS === undefined) return unavailable();
 
   try {
-    const asset = await bindings.ASSETS.fetch(request);
+    // Explicit HTML paths keep the calendar route stable when asset redirects are disabled.
+    const assetRequest =
+      url.pathname === "/" ? new Request(new URL("/index.html", url), request) : request;
+    const asset = await bindings.ASSETS.fetch(assetRequest);
     if (!asset.ok) return new Response("Not found", { status: 404, headers: RESPONSE_HEADERS });
     const headers = new Headers(asset.headers);
     for (const [name, value] of Object.entries(STATIC_SECURITY_HEADERS)) {

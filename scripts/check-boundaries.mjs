@@ -39,6 +39,7 @@ if (wrangler.workers_dev !== false || wrangler.preview_urls !== false) {
 if (
   wrangler.assets?.directory !== "./public" ||
   wrangler.assets?.binding !== "ASSETS" ||
+  wrangler.assets?.html_handling !== "none" ||
   wrangler.assets?.run_worker_first !== true ||
   wrangler.assets?.not_found_handling !== "none"
 ) {

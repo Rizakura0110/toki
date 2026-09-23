@@ -101,6 +101,9 @@ describe("Phase 38 static screen perimeter", () => {
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(response.headers.get("X-Frame-Options")).toBe("DENY");
     expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch).toHaveBeenCalledWith(
+      expect.objectContaining({ url: "http://127.0.0.1:8787/index.html" }),
+    );
   });
 
   it("denies an anonymous page and never delegates it to the asset worker", async () => {
@@ -111,6 +114,28 @@ describe("Phase 38 static screen perimeter", () => {
     expect(response.status).toBe(403);
     expect(await response.text()).not.toContain("Toki");
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("also protects the calendar document and its browser modules", async () => {
+    const fetch = vi.fn(async () => new Response("private calendar"));
+    for (const path of ["calendar.html", "calendar.js", "calendar.css", "calendar-core.js"]) {
+      const response = await handleRequest(new Request(`https://toki.example/${path}`), {
+        ASSETS: { fetch },
+      });
+      expect(response.status).toBe(403);
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("serves the calendar document only after the same local gate", async () => {
+    const fetch = vi.fn(async () => new Response("<html>Calendar</html>"));
+    const response = await handleRequest(new Request(`${localPage}calendar.html`), {
+      LOCAL_AUTH_BYPASS: "enabled",
+      ASSETS: { fetch },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("Calendar");
+    expect(fetch).toHaveBeenCalledOnce();
   });
 
   it("never applies the loopback bypass to a remote or HTTPS origin", async () => {
