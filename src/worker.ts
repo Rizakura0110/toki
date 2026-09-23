@@ -30,11 +30,18 @@ const STATIC_PATHS = new Set([
   "/calendar.js",
   "/calendar.css",
   "/calendar-core.js",
+  "/manifest.webmanifest",
+  "/icons/toki.svg",
+  "/icons/toki-maskable.svg",
+  "/icons/toki-180.png",
+  "/icons/toki-192.png",
+  "/icons/toki-512.png",
+  "/icons/toki-maskable-512.png",
 ]);
 const STATIC_SECURITY_HEADERS = {
   "Cache-Control": "no-store",
   "Content-Security-Policy":
-    "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+    "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; manifest-src 'self'; worker-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
   "Cross-Origin-Opener-Policy": "same-origin",
   "Referrer-Policy": "no-referrer",
   "X-Content-Type-Options": "nosniff",

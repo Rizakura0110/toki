@@ -25,7 +25,6 @@
 
 body {
   margin: 0;
-  min-width: 320px;
   background: var(--paper);
   color: var(--ink);
   line-height: 1.6;
@@ -45,7 +44,8 @@ button:disabled {
 }
 button:focus-visible,
 input:focus-visible,
-textarea:focus-visible {
+textarea:focus-visible,
+a:focus-visible {
   outline: 3px solid #258ec7;
   outline-offset: 3px;
 }
@@ -63,6 +63,9 @@ textarea:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
+}
+.site-header-inner > nav {
+  min-width: 0;
 }
 .brand {
   display: inline-flex;
@@ -391,6 +394,7 @@ legend,
 }
 .finished-summary {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
@@ -427,6 +431,7 @@ textarea::placeholder {
 }
 .description-meta {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 10px;
   margin: 8px 0 20px;
@@ -521,7 +526,8 @@ textarea::placeholder {
 }
 .text-button {
   border: 0;
-  padding: 6px 0;
+  min-height: 44px;
+  padding: 10px 0;
   background: transparent;
   color: inherit;
   font-weight: 800;
@@ -685,12 +691,69 @@ textarea::placeholder {
   }
 }
 
+@media (max-width: 440px) {
+  .site-header-inner {
+    min-height: 0;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+    padding-block: 12px;
+  }
+  .site-header-inner > nav .button {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
 @media (max-width: 360px) {
   .mode-options {
     grid-template-columns: 1fr;
   }
   .mode-option span {
     min-height: 0;
+  }
+  .time-value {
+    font-size: clamp(18px, 11vw, 40px);
+  }
+  .focus-time {
+    font-size: clamp(18px, 12.5vw, 45px);
+  }
+}
+
+@media (max-width: 260px) {
+  .site-header-inner,
+  .shell {
+    padding-inline: 8px;
+  }
+  .state-card,
+  .guide-card {
+    padding-inline: 10px;
+  }
+  .card-heading {
+    flex-wrap: wrap;
+  }
+  .live-badge {
+    margin-left: 0;
+  }
+  .duration-inputs {
+    grid-template-columns: 1fr;
+  }
+  .time-stage {
+    padding-inline: 4px;
+  }
+  .time-value.time-long,
+  .focus-time.time-long {
+    font-size: 10vw;
+  }
+  .time-value.time-very-long,
+  .focus-time.time-very-long {
+    font-size: 7vw;
+  }
+  .finished-summary strong {
+    font-size: clamp(14px, 7vw, 23px);
+  }
+  .focus-exit {
+    padding-inline: 8px;
   }
 }
 

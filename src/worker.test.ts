@@ -138,6 +138,34 @@ describe("Phase 38 static screen perimeter", () => {
     expect(fetch).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    "/manifest.webmanifest",
+    "/icons/toki.svg",
+    "/icons/toki-maskable.svg",
+    "/icons/toki-180.png",
+    "/icons/toki-192.png",
+    "/icons/toki-512.png",
+    "/icons/toki-maskable-512.png",
+  ])("keeps %s behind Access and serves it locally", async (path) => {
+    const fetch = vi.fn(async () => new Response("Toki PWA asset"));
+    const denied = await handleRequest(new Request(`https://toki.example${path}`), {
+      ASSETS: { fetch },
+    });
+    expect(denied.status).toBe(403);
+    expect(fetch).not.toHaveBeenCalled();
+
+    const allowed = await handleRequest(new Request(`http://127.0.0.1:8787${path}`), {
+      LOCAL_AUTH_BYPASS: "enabled",
+      ASSETS: { fetch },
+    });
+    expect(allowed.status).toBe(200);
+    expect(allowed.headers.get("Content-Security-Policy")).toContain("manifest-src 'self'");
+    expect(allowed.headers.get("Content-Security-Policy")).toContain("worker-src 'none'");
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ url: `http://127.0.0.1:8787${path}` }),
+    );
+  });
+
   it("never applies the loopback bypass to a remote or HTTPS origin", async () => {
     const fetch = vi.fn(async () => new Response("secret"));
     const remote = await handleRequest(new Request("https://toki.example/app.js"), {
