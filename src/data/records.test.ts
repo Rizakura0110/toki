@@ -22,12 +22,15 @@ const migration = readFileSync(
 );
 const openConnections: DatabaseSync[] = [];
 
-function localDb(): D1Database {
-  const sqlite = new DatabaseSync(":memory:");
+function localDb(
+  sqlite = new DatabaseSync(":memory:"),
+  onPrepare?: (sql: string) => void,
+): D1Database {
   sqlite.exec(migration);
   openConnections.push(sqlite);
   return {
     prepare(sql: string) {
+      onPrepare?.(sql);
       const prepared = sqlite.prepare(sql);
       let parameters: (string | number | null)[] = [];
       return {
@@ -329,5 +332,86 @@ describe("Toki D1 session repository", () => {
       saveSession(db, running.id, "Too long", START + MAX_RECORD_MS + 2),
     ).rejects.toBeInstanceOf(TokiDataError);
     await discardSession(db, running.id, START + MAX_RECORD_MS + 3);
+  });
+
+  it("keeps a dense saved history indexed and returns only records intersecting a range", async () => {
+    const sqlite = new DatabaseSync(":memory:");
+    const preparedSql: string[] = [];
+    const db = localDb(sqlite, (sql) => preparedSql.push(sql));
+    const minute = 60_000;
+    const insert = sqlite.prepare(
+      `INSERT INTO time_sessions
+       (id, client_request_id, mode, status, started_at_ms, timer_seconds,
+        deadline_at_ms, ended_at_ms, description, version, created_at_ms, updated_at_ms)
+       VALUES (?, ?, 'stopwatch', 'saved', ?, NULL, NULL, ?, 'Recorded', 3, ?, ?)`,
+    );
+    sqlite.exec("BEGIN");
+    for (let index = 0; index < 10_000; index++) {
+      const startedAtMs = START + index * minute;
+      insert.run(
+        `saved-${index}`,
+        `request-${index}`,
+        startedAtMs,
+        startedAtMs + minute,
+        START,
+        START,
+      );
+    }
+    insert.run(
+      "crossing",
+      "request-crossing",
+      START + 4_990 * minute,
+      START + 5_070 * minute,
+      START,
+      START,
+    );
+    sqlite.exec("COMMIT");
+    sqlite.exec("ANALYZE");
+
+    const startMs = START + 5_000 * minute;
+    const endMs = START + 5_060 * minute;
+    const records = await listSavedRecords(db, startMs, endMs);
+    expect(records).toHaveLength(61);
+    expect(records[0]?.id).toBe("crossing");
+    expect(records.at(-1)?.id).toBe("saved-5059");
+    expect(records.some((record) => record.id === "saved-4999")).toBe(false);
+    expect(records.some((record) => record.id === "saved-5060")).toBe(false);
+    expect(
+      records.every(
+        (record) =>
+          record.startedAtMs < endMs && record.endedAtMs !== null && record.endedAtMs > startMs,
+      ),
+    ).toBe(true);
+
+    const plan = sqlite
+      .prepare(
+        `EXPLAIN QUERY PLAN SELECT * FROM time_sessions
+         WHERE status = 'saved' AND started_at_ms < ? AND ended_at_ms > ?
+         ORDER BY started_at_ms ASC, id ASC`,
+      )
+      .all(endMs, startMs) as { detail: string }[];
+    expect(
+      plan.some(({ detail }) => /USING INDEX time_sessions_saved_(start|end)/.test(detail)),
+    ).toBe(true);
+
+    const openPlan = sqlite
+      .prepare(
+        `EXPLAIN QUERY PLAN SELECT * FROM time_sessions
+         WHERE status IN ('running', 'awaiting_description') LIMIT 1`,
+      )
+      .all() as { detail: string }[];
+    expect(openPlan.some(({ detail }) => detail.includes("time_sessions_one_open"))).toBe(true);
+
+    expect(await getCurrentSession(db, endMs)).toBeNull();
+    const timerUpdate = preparedSql.find(
+      (sql) => sql.includes("UPDATE time_sessions") && sql.includes("deadline_at_ms <= ?"),
+    );
+    expect(timerUpdate).toBeDefined();
+    const timerUpdatePlan = sqlite
+      .prepare(`EXPLAIN QUERY PLAN ${timerUpdate}`)
+      .all(endMs, endMs) as { detail: string }[];
+    expect(timerUpdatePlan.some(({ detail }) => detail.includes("time_sessions_one_open"))).toBe(
+      true,
+    );
   });
 });

@@ -13,12 +13,13 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "e2e": "playwright test",
     "boundaries": "node scripts/check-boundaries.mjs",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:verify:local": "wrangler d1 execute DB --local --command \"SELECT COUNT(*) AS records FROM time_sessions\"",
     "build": "wrangler deploy --dry-run --outdir dist",
     "audit": "pnpm audit --audit-level high",
-    "check": "pnpm boundaries && pnpm format:check && pnpm lint && pnpm cf:typecheck && pnpm typecheck && pnpm test:coverage && pnpm db:migrate:local && pnpm db:verify:local && pnpm build && pnpm audit"
+    "check": "pnpm boundaries && pnpm format:check && pnpm lint && pnpm cf:typecheck && pnpm typecheck && pnpm test:coverage && pnpm db:migrate:local && pnpm db:verify:local && pnpm build && pnpm e2e && pnpm audit"
   },
   "engines": {
     "node": ">=24 <25"
@@ -30,6 +31,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.9",
+    "@playwright/test": "1.62.1",
     "@types/node": "24.13.3",
     "@vitest/coverage-v8": "4.1.11",
     "typescript": "7.0.2",

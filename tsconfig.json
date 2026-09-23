@@ -15,5 +15,11 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts", "public/**/*.js", "worker-configuration.d.ts"]
+  "include": [
+    "src/**/*.ts",
+    "tests/**/*.ts",
+    "public/**/*.js",
+    "playwright.config.ts",
+    "worker-configuration.d.ts"
+  ]
 }

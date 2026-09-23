@@ -27,6 +27,7 @@ jobs:
     env:
       CI: "true"
       NODE_HOME: ${{ github.workspace }}/.tools/node
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.cache/ms-playwright
       PNPM_CONFIG_NPMRC_AUTH_FILE: ${{ github.workspace }}/.config/pnpm-auth-empty
       PNPM_HOME: ${{ github.workspace }}/.tools/pnpm
       TMPDIR: ${{ github.workspace }}/.tmp
@@ -43,7 +44,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$NODE_HOME" "$PNPM_HOME" "$TMPDIR" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME"
+          mkdir -p "$NODE_HOME" "$PLAYWRIGHT_BROWSERS_PATH" "$PNPM_HOME" "$TMPDIR" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME"
           : > "$PNPM_CONFIG_NPMRC_AUTH_FILE"
           node_version="$(tr -d '\r\n' < .node-version)"
           if [[ "$node_version" != "24.19.0" ]]; then
@@ -72,4 +73,5 @@ jobs:
           export PATH="$PNPM_HOME/bin:$PATH"
           node "$pnpm_cli" --version
           node "$pnpm_cli" install --frozen-lockfile
+          node "$pnpm_cli" exec playwright install --with-deps chromium
           node "$pnpm_cli" check

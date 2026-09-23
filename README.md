@@ -14,9 +14,10 @@ Node.js `24.19.0`とpnpm `11.22.0`を使用します。依存・キャッシュ�
 
 ```sh
 pnpm install --frozen-lockfile
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.cache/ms-playwright" pnpm exec playwright install chromium
 pnpm check
 ```
 
-`pnpm check`はformat、lint、生成型、TypeScript、coverage付きtest、local D1 migrationと`time_sessions`検査、Worker dry-run build、依存監査を実行します。Cloudflareのremote DBやWorkerは作成・変更しません。
+`pnpm check`はformat、lint、生成型、TypeScript、coverage付きtest、local D1 migrationと`time_sessions`検査、Worker dry-run build、ローカルChromium E2E、依存監査を実行します。E2Eは毎回専用の一時D1を使い、認証バイパスあり・なしの2つのloopback Workerを検証します。Cloudflareのremote DBやWorkerは作成・変更しません。
 
 必要な場合に限り、`pnpm dev`でローカルWorkerを起動できます。`/__local/db`と画面/APIの認証バイパスは明示的なローカル起動引数かつloopback HTTPに限定します。`.dev.vars`や`.env`は追跡しません。本番では画面/APIとも本人限定Accessに加えてWorkerでJWTを検証します。

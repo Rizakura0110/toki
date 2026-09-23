@@ -162,7 +162,9 @@ async function materializeExpiredTimer(db: D1Database, nowMs: number): Promise<v
       `UPDATE time_sessions
        SET status = 'awaiting_description', ended_at_ms = deadline_at_ms,
            updated_at_ms = ?, version = version + 1
-       WHERE status = 'running' AND mode = 'timer' AND deadline_at_ms <= ?`,
+       -- Keep the partial one-open index eligible even though the second condition is narrower.
+       WHERE status IN ('running', 'awaiting_description')
+         AND status = 'running' AND mode = 'timer' AND deadline_at_ms <= ?`,
     )
     .bind(nowMs, nowMs)
     .run();
