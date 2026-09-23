@@ -79,6 +79,11 @@
   flex-wrap: wrap;
   justify-content: end;
 }
+.new-record-button {
+  min-height: 44px;
+  padding-inline: 15px;
+  white-space: nowrap;
+}
 .view-switch {
   gap: 2px;
   padding: 4px;
@@ -410,6 +415,49 @@
 .edit-error p {
   margin: 0;
 }
+.delete-confirmation {
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid #e7ac9d;
+  border-radius: 10px;
+  background: #fff3ee;
+}
+.delete-confirmation p {
+  margin: 0 0 12px;
+  color: #782f22;
+  font-size: 13px;
+  font-weight: 700;
+}
+.delete-confirmation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 8px;
+}
+.button-danger,
+.button-danger-outline {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid #9b3428;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.button-danger {
+  background: #9b3428;
+  color: #fff;
+}
+.button-danger:hover:not(:disabled) {
+  background: #7f291f;
+}
+.button-danger-outline {
+  margin-right: auto;
+  background: #fff;
+  color: #8c3025;
+}
+.button-danger-outline:hover:not(:disabled) {
+  background: #fff3ee;
+}
 .edit-actions {
   display: flex;
   flex-wrap: wrap;
@@ -505,11 +553,15 @@
     padding: 22px 18px;
   }
   .edit-actions .button {
-    flex: 1 1 130px;
+    flex: 1 1 110px;
     min-width: 0;
     padding-inline: 8px;
     font-size: 13px;
     white-space: normal;
+  }
+  .delete-confirmation-actions .button {
+    flex: 1 1 120px;
+    min-width: 0;
   }
 }
 

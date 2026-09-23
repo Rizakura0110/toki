@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  createManualRecord,
+  deleteSavedRecord,
   discardSession,
   editSavedRecord,
   getCurrentSession,
@@ -16,8 +18,12 @@ import {
 } from "./records";
 
 const START = Date.UTC(2026, 8, 23, 23, 59, 0);
-const migration = readFileSync(
+const initialMigration = readFileSync(
   new URL("../../migrations/0001_initial.sql", import.meta.url),
+  "utf8",
+);
+const manualRecordMigration = readFileSync(
+  new URL("../../migrations/0002_manual_records.sql", import.meta.url),
   "utf8",
 );
 const openConnections: DatabaseSync[] = [];
@@ -25,8 +31,10 @@ const openConnections: DatabaseSync[] = [];
 function localDb(
   sqlite = new DatabaseSync(":memory:"),
   onPrepare?: (sql: string) => void,
+  includeTriggerChanges = false,
 ): D1Database {
-  sqlite.exec(migration);
+  sqlite.exec(initialMigration);
+  sqlite.exec(manualRecordMigration);
   openConnections.push(sqlite);
   return {
     prepare(sql: string) {
@@ -46,7 +54,13 @@ function localDb(
         },
         async run() {
           const result = prepared.run(...parameters);
-          return { meta: { changes: Number(result.changes) } };
+          const triggerChanges =
+            includeTriggerChanges &&
+            sql.startsWith("DELETE FROM time_sessions") &&
+            result.changes > 0
+              ? 1
+              : 0;
+          return { meta: { changes: Number(result.changes) + triggerChanges } };
         },
       };
     },
@@ -64,6 +78,226 @@ async function savedStopwatch(db: D1Database, requestId: string, start = START) 
 }
 
 describe("Toki D1 session repository", () => {
+  it("migrates existing sessions without changing rows or dropping the three indexes", () => {
+    const sqlite = new DatabaseSync(":memory:");
+    openConnections.push(sqlite);
+    sqlite.exec(initialMigration);
+    const insert = sqlite.prepare(
+      `INSERT INTO time_sessions
+       (id, client_request_id, mode, status, started_at_ms, timer_seconds,
+        deadline_at_ms, ended_at_ms, description, version, created_at_ms, updated_at_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    insert.run(
+      "saved",
+      "saved-request",
+      "timer",
+      "saved",
+      START,
+      60,
+      START + 60_000,
+      START + 60_000,
+      "Work",
+      3,
+      START,
+      START + 60_001,
+    );
+    insert.run(
+      "running",
+      "running-request",
+      "stopwatch",
+      "running",
+      START + 100_000,
+      null,
+      null,
+      null,
+      null,
+      1,
+      START + 100_000,
+      START + 100_000,
+    );
+    insert.run(
+      "discarded",
+      "discarded-request",
+      "stopwatch",
+      "discarded",
+      START - 100_000,
+      null,
+      null,
+      START - 99_000,
+      null,
+      3,
+      START - 100_000,
+      START - 98_000,
+    );
+    const before = sqlite.prepare("SELECT * FROM time_sessions ORDER BY id").all();
+
+    sqlite.exec(manualRecordMigration);
+
+    expect(sqlite.prepare("SELECT * FROM time_sessions ORDER BY id").all()).toEqual(before);
+    expect(sqlite.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
+    const indexes = sqlite
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'time_sessions_%' ORDER BY name",
+      )
+      .all() as { name: string }[];
+    expect(indexes.map(({ name }) => name)).toEqual([
+      "time_sessions_one_open",
+      "time_sessions_saved_end",
+      "time_sessions_saved_start",
+    ]);
+  });
+
+  it("creates a manual record idempotently without consuming the open measurement slot", async () => {
+    const db = localDb();
+    const measured = await savedStopwatch(db, "already-saved", START - 60_000);
+    const running = await startSession(
+      db,
+      { mode: "stopwatch", clientRequestId: "active-measurement" },
+      START,
+    );
+    const input = {
+      startedAtMs: START - 3_600_000,
+      endedAtMs: START + 3_600_000,
+      description: "  Earlier work  ",
+      clientRequestId: crypto.randomUUID(),
+    };
+    const first = await createManualRecord(db, input, START + 1000);
+    const retry = await createManualRecord(db, input, START + 2000);
+    expect(first).toMatchObject({
+      mode: "manual",
+      status: "saved",
+      startedAtMs: input.startedAtMs,
+      endedAtMs: input.endedAtMs,
+      description: "Earlier work",
+      timerSeconds: null,
+      deadlineAtMs: null,
+      version: 1,
+    });
+    expect(retry).toEqual(first);
+    expect((await getCurrentSession(db, START + 2000))?.id).toBe(running.id);
+    expect(
+      (await listSavedRecords(db, START - 60_000, START + 3_600_001)).map(({ id }) => id),
+    ).toEqual([first.id, measured.id]);
+    const future = await createManualRecord(
+      db,
+      {
+        ...input,
+        startedAtMs: START + 24 * 3_600_000,
+        endedAtMs: START + 25 * 3_600_000,
+        clientRequestId: crypto.randomUUID(),
+      },
+      START + 2000,
+    );
+    expect(future.startedAtMs).toBeGreaterThan(future.createdAtMs);
+    await expect(
+      createManualRecord(db, { ...input, description: "Different" }, START + 3000),
+    ).rejects.toMatchObject({ code: "conflict" });
+  });
+
+  it("rejects invalid manual records and a reused measurement request ID", async () => {
+    const db = localDb();
+    const measured = await savedStopwatch(db, crypto.randomUUID());
+    const input = {
+      startedAtMs: START,
+      endedAtMs: START + 60_000,
+      description: "Manual",
+      clientRequestId: crypto.randomUUID(),
+    };
+    await expect(
+      createManualRecord(db, { ...input, endedAtMs: START }, START),
+    ).rejects.toMatchObject({ code: "validation" });
+    await expect(
+      createManualRecord(db, { ...input, endedAtMs: START + MAX_RECORD_MS + 1 }, START),
+    ).rejects.toMatchObject({ code: "validation" });
+    await expect(
+      createManualRecord(db, { ...input, description: " " }, START),
+    ).rejects.toMatchObject({ code: "validation" });
+    await expect(
+      createManualRecord(db, { ...input, clientRequestId: measured.clientRequestId }, START),
+    ).rejects.toMatchObject({ code: "conflict" });
+  });
+
+  it("deletes saved records by version and blocks a deleted create or start request replay", async () => {
+    const sqlite = new DatabaseSync(":memory:");
+    // D1 counts the deletion and the AFTER DELETE request-ID insert together.
+    const db = localDb(sqlite, undefined, true);
+    const input = {
+      startedAtMs: START,
+      endedAtMs: START + 60_000,
+      description: "Manual",
+      clientRequestId: crypto.randomUUID(),
+    };
+    const manual = await createManualRecord(db, input, START);
+    await expect(deleteSavedRecord(db, manual.id, manual.version + 1)).rejects.toMatchObject({
+      code: "conflict",
+    });
+    expect(await listSavedRecords(db, START, START + 60_000)).toHaveLength(1);
+    await deleteSavedRecord(db, manual.id, manual.version);
+    expect(await listSavedRecords(db, START, START + 60_000)).toEqual([]);
+    expect(
+      sqlite.prepare("SELECT * FROM time_sessions WHERE id = ?").get(manual.id),
+    ).toBeUndefined();
+    expect(
+      sqlite
+        .prepare("SELECT * FROM deleted_client_request_ids WHERE client_request_id = ?")
+        .get(input.clientRequestId),
+    ).toEqual({ client_request_id: input.clientRequestId });
+    expect(
+      (
+        sqlite.prepare("PRAGMA table_info(deleted_client_request_ids)").all() as { name: string }[]
+      ).map(({ name }) => name),
+    ).toEqual(["client_request_id"]);
+    await expect(deleteSavedRecord(db, manual.id, manual.version)).rejects.toMatchObject({
+      code: "not_found",
+    });
+    await expect(createManualRecord(db, input, START + 2000)).rejects.toMatchObject({
+      code: "conflict",
+    });
+    expect(await getCurrentSession(db, START + 2000)).toBeNull();
+
+    const measured = await savedStopwatch(db, "measured-for-deletion", START + 3000);
+    await deleteSavedRecord(db, measured.id, measured.version);
+    expect(
+      sqlite.prepare("SELECT * FROM time_sessions WHERE id = ?").get(measured.id),
+    ).toBeUndefined();
+    expect(
+      sqlite
+        .prepare("SELECT * FROM deleted_client_request_ids WHERE client_request_id = ?")
+        .get(measured.clientRequestId),
+    ).toEqual({ client_request_id: measured.clientRequestId });
+    await expect(
+      startSession(
+        db,
+        { mode: "stopwatch", clientRequestId: measured.clientRequestId },
+        START + 120_000,
+      ),
+    ).rejects.toMatchObject({ code: "conflict" });
+    expect(await getCurrentSession(db, START + 120_000)).toBeNull();
+  });
+
+  it("does not delete an unfinished or discarded measurement through the record route", async () => {
+    const db = localDb();
+    const running = await startSession(
+      db,
+      { mode: "stopwatch", clientRequestId: crypto.randomUUID() },
+      START,
+    );
+    await expect(deleteSavedRecord(db, running.id, running.version)).rejects.toMatchObject({
+      code: "not_found",
+    });
+    expect((await getSession(db, running.id, START + 1))?.status).toBe("running");
+    const stopped = await stopSession(db, running.id, START + 1);
+    await expect(deleteSavedRecord(db, stopped.id, stopped.version)).rejects.toMatchObject({
+      code: "not_found",
+    });
+    const discarded = await discardSession(db, stopped.id, START + 2);
+    await expect(deleteSavedRecord(db, discarded.id, discarded.version)).rejects.toMatchObject({
+      code: "not_found",
+    });
+    expect((await getSession(db, discarded.id, START + 3))?.status).toBe("discarded");
+  });
+
   it("starts, stops, saves, and lists a stopwatch across midnight", async () => {
     const db = localDb();
     const running = await startSession(

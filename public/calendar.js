@@ -14,7 +14,7 @@ import {
  * @typedef {object} CalendarRecord
  * @property {string} id
  * @property {"saved"} status
- * @property {"stopwatch" | "timer"} mode
+ * @property {"stopwatch" | "timer" | "manual"} mode
  * @property {number} startedAtMs
  * @property {number} endedAtMs
  * @property {string} description
@@ -51,7 +51,7 @@ function readRecords(value) {
       !isObject(item) ||
       typeof item.id !== "string" ||
       item.status !== "saved" ||
-      (item.mode !== "stopwatch" && item.mode !== "timer") ||
+      (item.mode !== "stopwatch" && item.mode !== "timer" && item.mode !== "manual") ||
       !Number.isSafeInteger(item.startedAtMs) ||
       !Number.isSafeInteger(item.endedAtMs) ||
       typeof item.description !== "string" ||
@@ -66,11 +66,11 @@ function readRecords(value) {
   return result;
 }
 
-/** @param {string} path @param {"GET" | "PATCH"=} method @param {object=} body */
+/** @param {string} path @param {"GET" | "PATCH" | "POST" | "DELETE"=} method @param {object=} body */
 async function requestJson(path, method = "GET", body) {
   /** @type {RequestInit} */
   const options = { method, credentials: "same-origin", cache: "no-store" };
-  if (method === "PATCH") {
+  if (method !== "GET") {
     options.headers = { "Content-Type": "application/json", "X-Toki-Client": "web" };
     options.body = JSON.stringify(body);
   }
@@ -171,6 +171,7 @@ if (typeof document !== "undefined") {
     scroller: element("timeline-scroller"),
     timeline: element("timeline-inner"),
     recordsList: element("records-list"),
+    newRecord: /** @type {HTMLButtonElement} */ (element("new-record")),
     dialog: /** @type {HTMLDialogElement} */ (element("edit-dialog")),
     editForm: /** @type {HTMLFormElement} */ (element("edit-form")),
     editStart: /** @type {HTMLInputElement} */ (element("edit-start")),
@@ -179,12 +180,27 @@ if (typeof document !== "undefined") {
     editError: element("edit-error"),
     editErrorText: element("edit-error-text"),
     editReload: /** @type {HTMLButtonElement} */ (element("edit-reload")),
+    deleteConfirmation: element("delete-confirmation"),
+    deleteCancel: /** @type {HTMLButtonElement} */ (element("delete-cancel")),
+    deleteConfirm: /** @type {HTMLButtonElement} */ (element("delete-confirm")),
+    editDelete: /** @type {HTMLButtonElement} */ (element("edit-delete")),
     editCancel: /** @type {HTMLButtonElement} */ (element("edit-cancel")),
     editSave: /** @type {HTMLButtonElement} */ (element("edit-save")),
+    createDialog: /** @type {HTMLDialogElement} */ (element("create-dialog")),
+    createForm: /** @type {HTMLFormElement} */ (element("create-form")),
+    createStart: /** @type {HTMLInputElement} */ (element("create-start")),
+    createEnd: /** @type {HTMLInputElement} */ (element("create-end")),
+    createDescription: /** @type {HTMLTextAreaElement} */ (element("create-description")),
+    createError: element("create-error"),
+    createErrorText: element("create-error-text"),
+    createReload: /** @type {HTMLButtonElement} */ (element("create-reload")),
+    createCancel: /** @type {HTMLButtonElement} */ (element("create-cancel")),
+    createSave: /** @type {HTMLButtonElement} */ (element("create-save")),
   };
 
   const smallScreen = window.matchMedia("(max-width: 700px)");
-  /** @type {{dateKey: string, view: CalendarView, records: CalendarRecord[], loading: boolean, error: string, notice: string, requestNumber: number, editing: CalendarRecord | null, editBusy: boolean}} */
+  /** @typedef {{startedAtMs: number, endedAtMs: number, description: string, clientRequestId: string}} CreatePayload */
+  /** @type {{dateKey: string, view: CalendarView, records: CalendarRecord[], loading: boolean, error: string, notice: string, requestNumber: number, editing: CalendarRecord | null, editBusy: boolean, confirmingDelete: boolean, createBusy: boolean, createRequestId: string | null, createRetryPayload: CreatePayload | null, createSubmittedStartMs: number | null}} */
   const state = {
     dateKey: tokyoDateKey(Date.now()),
     view: smallScreen.matches ? "day" : "week",
@@ -195,6 +211,11 @@ if (typeof document !== "undefined") {
     requestNumber: 0,
     editing: null,
     editBusy: false,
+    confirmingDelete: false,
+    createBusy: false,
+    createRequestId: null,
+    createRetryPayload: null,
+    createSubmittedStartMs: null,
   };
 
   /** @param {string} message @param {boolean} reload */
@@ -203,6 +224,11 @@ if (typeof document !== "undefined") {
     ui.editError.hidden = false;
     ui.editReload.hidden = !reload;
     ui.editSave.disabled = reload;
+    ui.editDelete.disabled = reload;
+    if (reload) {
+      state.confirmingDelete = false;
+      ui.deleteConfirmation.hidden = true;
+    }
   }
 
   function clearEditError() {
@@ -210,6 +236,7 @@ if (typeof document !== "undefined") {
     ui.editErrorText.textContent = "";
     ui.editReload.hidden = true;
     ui.editSave.disabled = false;
+    ui.editDelete.disabled = false;
   }
 
   /** @param {string} id */
@@ -217,12 +244,51 @@ if (typeof document !== "undefined") {
     const record = state.records.find((item) => item.id === id);
     if (record === undefined) return;
     state.editing = record;
+    state.confirmingDelete = false;
+    ui.deleteConfirmation.hidden = true;
     ui.editStart.value = formatTokyoDateTimeInput(record.startedAtMs);
     ui.editEnd.value = formatTokyoDateTimeInput(record.endedAtMs);
     ui.editDescription.value = record.description;
     clearEditError();
     ui.dialog.showModal();
     ui.editStart.focus();
+  }
+
+  /** @param {string} message @param {boolean} reload */
+  function showCreateError(message, reload) {
+    ui.createErrorText.textContent = message;
+    ui.createError.hidden = false;
+    ui.createReload.hidden = !reload;
+    ui.createSave.disabled = reload;
+  }
+
+  function clearCreateError() {
+    ui.createError.hidden = true;
+    ui.createErrorText.textContent = "";
+    ui.createReload.hidden = true;
+    ui.createSave.disabled = false;
+  }
+
+  /** @param {boolean} disabled */
+  function setCreateFieldsDisabled(disabled) {
+    ui.createStart.disabled = disabled;
+    ui.createEnd.disabled = disabled;
+    ui.createDescription.disabled = disabled;
+  }
+
+  function openCreate() {
+    const startMs = dayRange(state.dateKey).startMs + 9 * 60 * 60 * 1000;
+    ui.createStart.value = formatTokyoDateTimeInput(startMs);
+    ui.createEnd.value = formatTokyoDateTimeInput(startMs + 60 * 60 * 1000);
+    ui.createDescription.value = "";
+    state.createRequestId = crypto.randomUUID();
+    state.createRetryPayload = null;
+    state.createSubmittedStartMs = null;
+    ui.createSave.textContent = "記録を保存";
+    setCreateFieldsDisabled(false);
+    clearCreateError();
+    ui.createDialog.showModal();
+    ui.createStart.focus();
   }
 
   /** @param {CalendarRecord} record @returns {HTMLButtonElement} */
@@ -423,7 +489,7 @@ if (typeof document !== "undefined") {
   }
 
   async function submitEdit() {
-    if (state.editBusy || state.editing === null) return;
+    if (state.editBusy || state.confirmingDelete || state.editing === null) return;
     // An unchanged second preserves the original sub-second instant rather than truncating it.
     // Some browsers normalize datetime-local values by removing a trailing ":00".
     const enteredStartMs = parseTokyoDateTimeInput(ui.editStart.value);
@@ -455,9 +521,11 @@ if (typeof document !== "undefined") {
     const record = state.editing;
     state.editBusy = true;
     ui.editSave.disabled = true;
+    ui.editDelete.disabled = true;
     ui.editCancel.disabled = true;
     clearEditError();
     ui.editSave.disabled = true;
+    ui.editDelete.disabled = true;
     try {
       await requestJson(`/api/v1/records/${encodeURIComponent(record.id)}`, "PATCH", {
         startedAtMs: startMs,
@@ -481,10 +549,144 @@ if (typeof document !== "undefined") {
     } finally {
       state.editBusy = false;
       ui.editCancel.disabled = false;
-      if (ui.editReload.hidden) ui.editSave.disabled = false;
+      if (ui.editReload.hidden) {
+        ui.editSave.disabled = false;
+        ui.editDelete.disabled = false;
+      }
     }
   }
 
+  function beginDelete() {
+    if (state.editBusy || state.editing === null || !ui.editReload.hidden) return;
+    state.confirmingDelete = true;
+    ui.deleteConfirmation.hidden = false;
+    ui.editSave.disabled = true;
+    ui.editDelete.disabled = true;
+    ui.deleteConfirm.focus();
+  }
+
+  function cancelDelete() {
+    if (state.editBusy) return;
+    state.confirmingDelete = false;
+    ui.deleteConfirmation.hidden = true;
+    ui.editSave.disabled = !ui.editReload.hidden;
+    ui.editDelete.disabled = !ui.editReload.hidden;
+    ui.editDelete.focus();
+  }
+
+  async function submitDelete() {
+    if (state.editBusy || !state.confirmingDelete || state.editing === null) return;
+    const record = state.editing;
+    state.editBusy = true;
+    ui.deleteConfirm.disabled = true;
+    ui.deleteCancel.disabled = true;
+    ui.editCancel.disabled = true;
+    try {
+      await requestJson(`/api/v1/records/${encodeURIComponent(record.id)}`, "DELETE", {
+        expectedVersion: record.version,
+      });
+      ui.dialog.close();
+      state.editing = null;
+      state.notice = "記録を削除しました。";
+      await loadRecords();
+    } catch (cause) {
+      showEditError(
+        failureMessage(
+          cause,
+          "削除結果を確認できませんでした。記録を再読み込みして確認してください。",
+        ),
+        true,
+      );
+    } finally {
+      state.editBusy = false;
+      ui.deleteConfirm.disabled = false;
+      ui.deleteCancel.disabled = false;
+      ui.editCancel.disabled = false;
+    }
+  }
+
+  async function submitCreate() {
+    if (
+      state.createBusy ||
+      state.createRequestId === null ||
+      (!ui.createReload.hidden && ui.createSave.disabled)
+    ) {
+      return;
+    }
+    let payload = state.createRetryPayload;
+    if (payload === null) {
+      const startedAtMs = parseTokyoDateTimeInput(ui.createStart.value);
+      const endedAtMs = parseTokyoDateTimeInput(ui.createEnd.value);
+      const description = ui.createDescription.value.trim();
+      if (
+        startedAtMs === null ||
+        endedAtMs === null ||
+        startedAtMs <= 0 ||
+        !availableDate(ui.createStart.value.slice(0, 10), "day") ||
+        endedAtMs <= startedAtMs ||
+        endedAtMs - startedAtMs > MAX_RECORD_MS ||
+        description.length < 1 ||
+        description.length > 500
+      ) {
+        showCreateError(
+          "開始日（1970年1月2日〜2100年12月31日）・終了日時と内容を確認してください。終了は開始より後、1件は366日以内です。",
+          false,
+        );
+        return;
+      }
+      payload = { startedAtMs, endedAtMs, description, clientRequestId: state.createRequestId };
+    }
+    state.createBusy = true;
+    state.createSubmittedStartMs = payload.startedAtMs;
+    setCreateFieldsDisabled(true);
+    ui.createSave.disabled = true;
+    ui.createCancel.disabled = true;
+    clearCreateError();
+    ui.createSave.disabled = true;
+    try {
+      await requestJson("/api/v1/records", "POST", payload);
+      ui.createDialog.close();
+      state.createRequestId = null;
+      state.createRetryPayload = null;
+      const createdDateKey = tokyoDateKey(payload.startedAtMs);
+      if (!availableDate(createdDateKey, state.view)) state.view = "day";
+      state.dateKey = createdDateKey;
+      state.notice = "記録を追加しました。";
+      await loadRecords();
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 400) {
+        state.createRetryPayload = null;
+        setCreateFieldsDisabled(false);
+        showCreateError(failureMessage(cause, "日時や内容を確認してください。"), false);
+      } else if (cause instanceof ApiError && [401, 403, 404, 409].includes(cause.status)) {
+        state.createRetryPayload = null;
+        showCreateError(
+          cause.status === 409
+            ? "同じ登録リクエストは既に使用されています。記録を再読み込みして確認してください。"
+            : failureMessage(cause, "記録を保存できませんでした。再読み込みして確認してください。"),
+          true,
+        );
+      } else {
+        // A response may have been lost after D1 committed. Retry the same payload and key.
+        state.createRetryPayload = payload;
+        ui.createSave.textContent = "同じ内容で再試行";
+        showCreateError(
+          "保存結果を確認できませんでした。同じ内容で再試行するか、記録を再読み込みして確認してください。",
+          false,
+        );
+        ui.createReload.hidden = false;
+      }
+    } finally {
+      state.createBusy = false;
+      ui.createCancel.disabled = false;
+      if (ui.createReload.hidden) ui.createSave.disabled = false;
+      if (state.createRetryPayload === null && ui.createReload.hidden) {
+        setCreateFieldsDisabled(false);
+      }
+    }
+  }
+
+  ui.newRecord.addEventListener("click", openCreate);
   ui.dayView.addEventListener("click", () => setView("day"));
   ui.weekView.addEventListener("click", () => setView("week"));
   ui.previous.addEventListener("click", () => move(state.view === "week" ? -7 : -1));
@@ -511,6 +713,9 @@ if (typeof document !== "undefined") {
     event.preventDefault();
     void submitEdit();
   });
+  ui.editDelete.addEventListener("click", beginDelete);
+  ui.deleteCancel.addEventListener("click", cancelDelete);
+  ui.deleteConfirm.addEventListener("click", () => void submitDelete());
   ui.editCancel.addEventListener("click", () => ui.dialog.close());
   ui.editReload.addEventListener("click", () => {
     ui.dialog.close();
@@ -523,7 +728,45 @@ if (typeof document !== "undefined") {
   });
   ui.dialog.addEventListener("close", () => {
     state.editing = null;
+    state.confirmingDelete = false;
+    ui.deleteConfirmation.hidden = true;
     clearEditError();
+  });
+  ui.createForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void submitCreate();
+  });
+  function closeCreateAndReload() {
+    const startedAtMs = state.createSubmittedStartMs;
+    ui.createDialog.close();
+    if (startedAtMs !== null) {
+      const createdDateKey = tokyoDateKey(startedAtMs);
+      if (availableDate(createdDateKey, "day")) {
+        if (!availableDate(createdDateKey, state.view)) state.view = "day";
+        state.dateKey = createdDateKey;
+      }
+    }
+    state.notice = "";
+    void loadRecords();
+  }
+  ui.createCancel.addEventListener("click", () => {
+    if (state.createRetryPayload !== null || !ui.createReload.hidden) closeCreateAndReload();
+    else ui.createDialog.close();
+  });
+  ui.createReload.addEventListener("click", closeCreateAndReload);
+  ui.createDialog.addEventListener("cancel", (event) => {
+    if (state.createBusy) {
+      event.preventDefault();
+    } else if (state.createRetryPayload !== null || !ui.createReload.hidden) {
+      event.preventDefault();
+      closeCreateAndReload();
+    }
+  });
+  ui.createDialog.addEventListener("close", () => {
+    state.createRequestId = null;
+    state.createRetryPayload = null;
+    state.createSubmittedStartMs = null;
+    clearCreateError();
   });
   smallScreen.addEventListener("change", () => {
     if (smallScreen.matches && state.view === "week") setView("day");

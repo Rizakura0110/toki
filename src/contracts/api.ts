@@ -27,21 +27,41 @@ export const saveSessionSchema = z.strictObject({
   description: descriptionSchema,
 });
 
-export const editRecordSchema = z
-  .strictObject({
+function validRecordInterval<Fields extends { startedAtMs: number; endedAtMs: number }>(
+  schema: z.ZodType<Fields>,
+) {
+  return schema
+    .refine((value) => value.endedAtMs > value.startedAtMs, {
+      message: "The end time must be after the start time.",
+      path: ["endedAtMs"],
+    })
+    .refine((value) => value.endedAtMs - value.startedAtMs <= MAX_RECORD_OR_QUERY_DURATION_MS, {
+      message: "The record duration exceeds 366 days.",
+      path: ["endedAtMs"],
+    });
+}
+
+export const createRecordSchema = validRecordInterval(
+  z.strictObject({
+    startedAtMs: epochMsSchema,
+    endedAtMs: epochMsSchema,
+    description: descriptionSchema,
+    clientRequestId: clientRequestIdSchema,
+  }),
+);
+
+export const editRecordSchema = validRecordInterval(
+  z.strictObject({
     startedAtMs: epochMsSchema,
     endedAtMs: epochMsSchema,
     description: descriptionSchema,
     expectedVersion: z.int().positive(),
-  })
-  .refine((value) => value.endedAtMs > value.startedAtMs, {
-    message: "The end time must be after the start time.",
-    path: ["endedAtMs"],
-  })
-  .refine((value) => value.endedAtMs - value.startedAtMs <= MAX_RECORD_OR_QUERY_DURATION_MS, {
-    message: "The record duration exceeds 366 days.",
-    path: ["endedAtMs"],
-  });
+  }),
+);
+
+export const deleteRecordSchema = z.strictObject({
+  expectedVersion: z.int().positive(),
+});
 
 const epochMsQuerySchema = z
   .string()
@@ -65,5 +85,7 @@ export const recordsQuerySchema = z
 
 export type StartSessionInput = z.infer<typeof startSessionSchema>;
 export type SaveSessionInput = z.infer<typeof saveSessionSchema>;
+export type CreateRecordInput = z.infer<typeof createRecordSchema>;
 export type EditRecordInput = z.infer<typeof editRecordSchema>;
+export type DeleteRecordInput = z.infer<typeof deleteRecordSchema>;
 export type RecordsQuery = z.infer<typeof recordsQuerySchema>;

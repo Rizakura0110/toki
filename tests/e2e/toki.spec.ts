@@ -12,6 +12,7 @@ type Session = {
 };
 type Record = {
   id: string;
+  mode: "stopwatch" | "timer" | "manual";
   startedAtMs: number;
   endedAtMs: number;
   description: string;
@@ -177,6 +178,129 @@ test("desktop stopwatch survives reload, saves a cross-midnight record and rejec
   expect(pageErrors).toEqual([]);
 });
 
+test("calendar creates a manual record and requires confirmation and a current version to delete it", async ({
+  page,
+  request,
+}) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  const selectedDateKey = "2040-05-14";
+  const dateKey = "2040-05-15";
+  await page.goto("/calendar.html");
+  await page.locator("#calendar-date").fill(selectedDateKey);
+  await page.locator("#calendar-date").dispatchEvent("change");
+  await page.locator("#new-record").click();
+  await expect(page.locator("#create-start")).toHaveValue(/2040-05-14T09:00/u);
+  await expect(page.locator("#create-end")).toHaveValue(/2040-05-14T10:00/u);
+  await page.locator("#create-start").fill("2101-01-01T09:00");
+  await page.locator("#create-end").fill("2101-01-01T10:00");
+  await page.locator("#create-description").fill("Outside calendar");
+  await page.locator("#create-save").click();
+  await expect(page.locator("#create-error-text")).toContainText("2100年12月31日");
+  await page.locator("#create-start").fill(`${dateKey}T09:15`);
+  await page.locator("#create-end").fill(`${dateKey}T10:45`);
+  await page.locator("#create-description").fill("Manually entered work");
+  await page.locator("#create-save").click();
+  await expect(page.locator("#create-dialog")).toBeHidden();
+  await expect(page.locator("#calendar-date")).toHaveValue(dateKey);
+  await expect(page.getByText("Manually entered work").first()).toBeVisible();
+  await expect(page.locator(".timeline-day .timeline-event")).toHaveCount(1);
+  await page.getByRole("button", { name: "日", exact: true }).click();
+  await expect(page.locator(".timeline-day .timeline-event")).toHaveCount(1);
+  const created = (await recordsForDay(request, dateKey)).find(
+    (item) => item.description === "Manually entered work",
+  );
+  expect(created?.mode).toBe("manual");
+  if (created === undefined) throw new Error("Manual record was not returned by the local D1 API.");
+
+  await page.reload();
+  await page.locator("#calendar-date").fill(dateKey);
+  await page.locator("#calendar-date").dispatchEvent("change");
+  await page
+    .getByRole("button", { name: /Manually entered work.*編集する/u })
+    .last()
+    .click();
+  await page.locator("#edit-delete").click();
+  await expect(page.locator("#delete-confirmation")).toBeVisible();
+  await page.locator("#delete-cancel").click();
+  await expect(page.locator("#delete-confirmation")).toBeHidden();
+  expect((await recordsForDay(request, dateKey)).some((item) => item.id === created.id)).toBe(true);
+
+  await page.locator("#edit-delete").click();
+  await patch(request, created, "Changed in another tab");
+  await page.locator("#delete-confirm").click();
+  await expect(page.locator("#edit-error-text")).toContainText("ほかの画面で記録が更新されました");
+  await expect(page.locator("#edit-delete")).toBeDisabled();
+  await page.locator("#edit-reload").click();
+  await expect(page.getByText("Changed in another tab").first()).toBeVisible();
+
+  await page
+    .getByRole("button", { name: /Changed in another tab.*編集する/u })
+    .last()
+    .click();
+  await page.locator("#edit-delete").click();
+  await page.locator("#delete-confirm").click();
+  await expect(page.locator("#edit-dialog")).toBeHidden();
+  expect((await recordsForDay(request, dateKey)).some((item) => item.id === created.id)).toBe(
+    false,
+  );
+  await page.reload();
+  await page.locator("#calendar-date").fill(dateKey);
+  await page.locator("#calendar-date").dispatchEvent("change");
+  await expect(page.getByText("Changed in another tab")).toHaveCount(0);
+
+  let dropNextPost = true;
+  await page.route("**/api/v1/records", async (route) => {
+    if (route.request().method() === "POST" && dropNextPost) {
+      dropNextPost = false;
+      await route.fetch();
+      await route.abort("failed");
+      return;
+    }
+    await route.continue();
+  });
+  await page.locator("#new-record").click();
+  await page.locator("#create-start").fill("2040-05-16T09:00");
+  await page.locator("#create-end").fill("2040-05-16T10:00");
+  await page.locator("#create-description").fill("Saved despite lost response");
+  await page.locator("#create-save").click();
+  await expect(page.locator("#create-error-text")).toContainText("保存結果を確認できませんでした");
+  await expect(page.locator("#create-start")).toBeDisabled();
+  await page.locator("#create-reload").click();
+  await expect(page.locator("#calendar-date")).toHaveValue("2040-05-16");
+  await expect(page.getByText("Saved despite lost response").first()).toBeVisible();
+
+  dropNextPost = true;
+  await page.locator("#new-record").click();
+  await page.locator("#create-start").fill("2040-05-17T09:00");
+  await page.locator("#create-end").fill("2040-05-17T10:00");
+  await page.locator("#create-description").fill("Retried without duplicate");
+  await page.locator("#create-save").click();
+  await expect(page.locator("#create-error-text")).toContainText("保存結果を確認できませんでした");
+  await expect(page.locator("#create-save")).toHaveText("同じ内容で再試行");
+  await page.locator("#create-save").click();
+  await expect(page.locator("#create-dialog")).toBeHidden();
+  await expect(page.locator("#calendar-date")).toHaveValue("2040-05-17");
+  expect(
+    (await recordsForDay(request, "2040-05-17")).filter(
+      (item) => item.description === "Retried without duplicate",
+    ),
+  ).toHaveLength(1);
+
+  dropNextPost = true;
+  await page.locator("#new-record").click();
+  await page.locator("#create-start").fill("2040-05-18T09:00");
+  await page.locator("#create-end").fill("2040-05-18T10:00");
+  await page.locator("#create-description").fill("Recovered after Escape");
+  await page.locator("#create-save").click();
+  await expect(page.locator("#create-error-text")).toContainText("保存結果を確認できませんでした");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#create-dialog")).toBeHidden();
+  await expect(page.locator("#calendar-date")).toHaveValue("2040-05-18");
+  await expect(page.getByText("Recovered after Escape").first()).toBeVisible();
+  expect(pageErrors).toEqual([]);
+});
+
 test.describe("320px mobile", () => {
   test.use({
     viewport: { width: 320, height: 740 },
@@ -223,6 +347,31 @@ test.describe("320px mobile", () => {
     await page.reload();
     await expect(page.getByText("Phase42 timer").first()).toBeVisible();
     expect(pageErrors).toEqual([]);
+  });
+
+  test("manual record form and delete confirmation fit the narrow calendar", async ({ page }) => {
+    await page.goto("/calendar.html");
+    await page.locator("#calendar-date").fill("2041-06-01");
+    await page.locator("#calendar-date").dispatchEvent("change");
+    await page.locator("#new-record").click();
+    await expect(page.locator("#create-dialog")).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+    await page.locator("#create-description").fill("Narrow screen manual record");
+    await page.locator("#create-save").click();
+    await expect(page.locator("#create-dialog")).toBeHidden();
+    await page
+      .getByRole("button", { name: /Narrow screen manual record.*編集する/u })
+      .last()
+      .click();
+    await page.locator("#edit-delete").click();
+    await expect(page.locator("#delete-confirmation")).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+    await page.locator("#delete-cancel").click();
+    await page.locator("#edit-cancel").click();
   });
 });
 

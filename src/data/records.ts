@@ -4,7 +4,8 @@ export const MAX_TIMER_SECONDS = 24 * 60 * 60;
 export const MAX_RECORD_MS = 366 * 24 * 60 * 60 * 1000;
 export const MAX_DESCRIPTION_LENGTH = 500;
 
-export type SessionMode = "stopwatch" | "timer";
+export type SessionMode = "stopwatch" | "timer" | "manual";
+export type MeasurementMode = Exclude<SessionMode, "manual">;
 export type SessionStatus = "running" | "awaiting_description" | "saved" | "discarded";
 
 export interface TokiSession {
@@ -52,8 +53,15 @@ interface SessionRow {
 }
 
 export interface StartSessionInput {
-  readonly mode: SessionMode;
+  readonly mode: MeasurementMode;
   readonly timerSeconds?: number;
+  readonly clientRequestId: string;
+}
+
+export interface CreateManualRecordInput {
+  readonly startedAtMs: number;
+  readonly endedAtMs: number;
+  readonly description: string;
   readonly clientRequestId: string;
 }
 
@@ -227,9 +235,22 @@ export async function startSession(
       `INSERT OR IGNORE INTO time_sessions
        (id, client_request_id, mode, status, started_at_ms, timer_seconds,
         deadline_at_ms, ended_at_ms, description, version, created_at_ms, updated_at_ms)
-       VALUES (?, ?, ?, 'running', ?, ?, ?, NULL, NULL, 1, ?, ?)`,
+       SELECT ?, ?, ?, 'running', ?, ?, ?, NULL, NULL, 1, ?, ?
+       WHERE NOT EXISTS (
+         SELECT 1 FROM deleted_client_request_ids WHERE client_request_id = ?
+       )`,
     )
-    .bind(id, input.clientRequestId, input.mode, nowMs, timerSeconds, deadlineAtMs, nowMs, nowMs)
+    .bind(
+      id,
+      input.clientRequestId,
+      input.mode,
+      nowMs,
+      timerSeconds,
+      deadlineAtMs,
+      nowMs,
+      nowMs,
+      input.clientRequestId,
+    )
     .run();
 
   const result = await db
@@ -327,6 +348,55 @@ export async function discardSession(
   throw new TokiDataError("conflict", "Session state changed");
 }
 
+/** A request UUID prevents a network retry from adding a second manual record. */
+export async function createManualRecord(
+  db: D1Database,
+  input: CreateManualRecordInput,
+  nowMs: number,
+): Promise<TokiSession> {
+  requireNow(nowMs);
+  requireId(input.clientRequestId);
+  requireInterval(input.startedAtMs, input.endedAtMs);
+  const description = normalizeDescription(input.description);
+  const id = crypto.randomUUID();
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO time_sessions
+       (id, client_request_id, mode, status, started_at_ms, timer_seconds,
+        deadline_at_ms, ended_at_ms, description, version, created_at_ms, updated_at_ms)
+       SELECT ?, ?, 'manual', 'saved', ?, NULL, NULL, ?, ?, 1, ?, ?
+       WHERE NOT EXISTS (
+         SELECT 1 FROM deleted_client_request_ids WHERE client_request_id = ?
+       )`,
+    )
+    .bind(
+      id,
+      input.clientRequestId,
+      input.startedAtMs,
+      input.endedAtMs,
+      description,
+      nowMs,
+      nowMs,
+      input.clientRequestId,
+    )
+    .run();
+
+  const row = await db
+    .prepare("SELECT * FROM time_sessions WHERE client_request_id = ?")
+    .bind(input.clientRequestId)
+    .first<SessionRow>();
+  if (
+    row?.mode === "manual" &&
+    row.status === "saved" &&
+    row.started_at_ms === input.startedAtMs &&
+    row.ended_at_ms === input.endedAtMs &&
+    row.description === description
+  ) {
+    return rowToSession(row);
+  }
+  throw new TokiDataError("conflict", "Request ID has already been used");
+}
+
 /** Optimistic version check prevents two tabs silently overwriting saved edits. */
 export async function editSavedRecord(
   db: D1Database,
@@ -354,6 +424,28 @@ export async function editSavedRecord(
     throw new TokiDataError("conflict", "Record was changed by another request");
   }
   return result;
+}
+
+/** Deletion and its request-ID tombstone happen in one SQLite statement. */
+export async function deleteSavedRecord(
+  db: D1Database,
+  id: string,
+  expectedVersion: number,
+): Promise<void> {
+  requireId(id);
+  requireVersion(expectedVersion);
+  const deletion = await db
+    .prepare("DELETE FROM time_sessions WHERE id = ? AND status = 'saved' AND version = ?")
+    .bind(id, expectedVersion)
+    .run();
+  // D1 includes the trigger's request-ID insert in its reported change count.
+  if (deletion.meta.changes > 0) return;
+
+  const current = await selectById(db, id);
+  if (current?.status === "saved") {
+    throw new TokiDataError("conflict", "Record was changed by another request");
+  }
+  throw new TokiDataError("not_found", "Record not found");
 }
 
 /** Half-open [start,end) range: records ending exactly at start are excluded. */

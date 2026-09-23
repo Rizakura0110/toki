@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  createRecordSchema,
+  deleteRecordSchema,
   editRecordSchema,
   recordIdSchema,
   recordsQuerySchema,
@@ -92,6 +94,37 @@ describe("saved record request contracts", () => {
     expect(editRecordSchema.safeParse({ ...valid, startedAtMs: 1.5 }).success).toBe(false);
     expect(editRecordSchema.safeParse({ ...valid, expectedVersion: 0 }).success).toBe(false);
     expect(editRecordSchema.safeParse({ ...valid, extra: true }).success).toBe(false);
+  });
+
+  it("validates a manual record with an idempotent request UUID", () => {
+    const valid = {
+      startedAtMs: START_MS,
+      endedAtMs: START_MS + 366 * DAY_MS,
+      description: "  集中  ",
+      clientRequestId: REQUEST_ID,
+    };
+    expect(createRecordSchema.parse(valid)).toEqual({ ...valid, description: "集中" });
+    for (const invalid of [
+      { ...valid, endedAtMs: START_MS },
+      { ...valid, endedAtMs: START_MS + 366 * DAY_MS + 1 },
+      { ...valid, description: " " },
+      { ...valid, clientRequestId: "invalid" },
+      { ...valid, mode: "stopwatch" },
+    ]) {
+      expect(createRecordSchema.safeParse(invalid).success).toBe(false);
+    }
+  });
+
+  it("requires only a positive expected version for deletion", () => {
+    expect(deleteRecordSchema.parse({ expectedVersion: 3 })).toEqual({ expectedVersion: 3 });
+    for (const invalid of [
+      {},
+      { expectedVersion: 0 },
+      { expectedVersion: 1.5 },
+      { expectedVersion: 1, extra: true },
+    ]) {
+      expect(deleteRecordSchema.safeParse(invalid).success).toBe(false);
+    }
   });
 });
 

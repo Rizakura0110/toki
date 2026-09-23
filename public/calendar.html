@@ -36,7 +36,7 @@
         <div>
           <p class="eyebrow">THE SHAPE OF YOUR DAY</p>
           <h1>時間の記録</h1>
-          <p>測った時間を、日付とともに振り返る。</p>
+          <p>測った時間も、後から入力した時間も、日付とともに振り返る。</p>
         </div>
         <div class="calendar-intro-mark" aria-hidden="true">T.</div>
       </div>
@@ -54,6 +54,7 @@
           <p id="record-count" class="calendar-count">記録を確認しています…</p>
         </div>
         <div class="calendar-controls">
+          <button id="new-record" class="button button-primary new-record-button" type="button">＋ 記録を追加</button>
           <fieldset class="view-switch">
             <legend class="sr-only">表示単位</legend>
             <button id="day-view" type="button" aria-pressed="false">日</button>
@@ -85,7 +86,7 @@
           記録を読み込んでいます…
         </div>
         <p id="calendar-empty" class="calendar-empty" hidden>
-          この期間の記録はまだありません。計測を保存すると、ここに表示されます。
+          この期間の記録はまだありません。計測を保存するか、記録を追加するとここに表示されます。
         </p>
         <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: A focusable scroll region lets keyboard users pan the wide week timeline. -->
         <section id="timeline-scroller" class="timeline-scroller" tabindex="0" aria-label="週・日のタイムライン" hidden>
@@ -125,9 +126,44 @@
           <p id="edit-error-text"></p>
           <button id="edit-reload" class="text-button" type="button" hidden>記録を再読み込み</button>
         </div>
+        <div id="delete-confirmation" class="delete-confirmation" hidden>
+          <p>この記録を削除しますか？ 削除すると元に戻せません。</p>
+          <div class="delete-confirmation-actions">
+            <button id="delete-cancel" class="button button-quiet" type="button">削除をやめる</button>
+            <button id="delete-confirm" class="button button-danger" type="button">削除する</button>
+          </div>
+        </div>
         <div class="edit-actions">
+          <button id="edit-delete" class="button button-danger-outline" type="button">記録を削除</button>
           <button id="edit-cancel" class="button button-quiet" type="button">キャンセル</button>
           <button id="edit-save" class="button button-primary" type="submit">変更を保存</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="create-dialog" class="edit-dialog" aria-labelledby="create-title">
+      <form id="create-form" novalidate>
+        <div class="edit-header">
+          <p class="card-kicker">ADD A RECORD</p>
+          <h2 id="create-title">記録を追加</h2>
+          <p>計測せずに、時間と内容を記録できます。ほかの記録と時間が重なっても保存できます。</p>
+        </div>
+        <div class="edit-fields">
+          <label for="create-start">開始日時 <span>日本時間</span></label>
+          <input id="create-start" type="datetime-local" step="1" required />
+          <label for="create-end">終了日時 <span>日本時間</span></label>
+          <input id="create-end" type="datetime-local" step="1" required />
+          <label for="create-description">この時間にしたこと</label>
+          <textarea id="create-description" rows="4" maxlength="500" required></textarea>
+          <p class="edit-help">内容は1〜500文字、1件の時間は最大366日です。</p>
+        </div>
+        <div id="create-error" class="edit-error" role="alert" hidden>
+          <p id="create-error-text"></p>
+          <button id="create-reload" class="text-button" type="button" hidden>記録を再読み込み</button>
+        </div>
+        <div class="edit-actions">
+          <button id="create-cancel" class="button button-quiet" type="button">キャンセル</button>
+          <button id="create-save" class="button button-primary" type="submit">記録を保存</button>
         </div>
       </form>
     </dialog>

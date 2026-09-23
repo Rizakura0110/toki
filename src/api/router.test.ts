@@ -6,6 +6,8 @@ vi.mock("../data/records", async (importOriginal) => {
   const original = await importOriginal<typeof import("../data/records")>();
   return {
     ...original,
+    createManualRecord: vi.fn(),
+    deleteSavedRecord: vi.fn(),
     getCurrentSession: vi.fn(),
     startSession: vi.fn(),
     stopSession: vi.fn(),
@@ -17,6 +19,8 @@ vi.mock("../data/records", async (importOriginal) => {
 });
 
 import {
+  createManualRecord,
+  deleteSavedRecord,
   discardSession,
   editSavedRecord,
   getCurrentSession,
@@ -179,6 +183,55 @@ describe("Toki API perimeter", () => {
       { startedAtMs: 1000, endedAtMs: 2000, description: "Work", expectedVersion: 1 },
       expect.any(Number),
     );
+  });
+
+  it("creates a manual record from a strict payload behind the mutation gate", async () => {
+    const input = {
+      startedAtMs: 1000,
+      endedAtMs: 2000,
+      description: "Work",
+      clientRequestId: REQUEST_ID,
+    };
+    const unsafe = await handleApiRequest(
+      request("/api/v1/records", "POST", input, { Origin: "https://other.example" }),
+      LOCAL,
+    );
+    const invalid = await handleApiRequest(
+      request("/api/v1/records", "POST", { ...input, mode: "timer" }),
+      LOCAL,
+    );
+    expect([unsafe.status, invalid.status]).toEqual([403, 400]);
+    expect(createManualRecord).not.toHaveBeenCalled();
+
+    vi.mocked(createManualRecord).mockResolvedValue({ id: SESSION_ID, mode: "manual" } as never);
+    const created = await handleApiRequest(request("/api/v1/records", "POST", input), LOCAL);
+    expect(created.status).toBe(201);
+    expect(createManualRecord).toHaveBeenCalledWith(DB, input, expect.any(Number));
+    expect((await created.json()) as object).toMatchObject({
+      record: { id: SESSION_ID, mode: "manual" },
+    });
+  });
+
+  it("deletes only a saved record with a strict version payload", async () => {
+    const path = `/api/v1/records/${SESSION_ID}`;
+    const unsafe = await handleApiRequest(
+      request(path, "DELETE", { expectedVersion: 2 }, { "X-Toki-Client": "" }),
+      LOCAL,
+    );
+    const invalid = await handleApiRequest(request(path, "DELETE", { expectedVersion: 0 }), LOCAL);
+    expect([unsafe.status, invalid.status]).toEqual([403, 400]);
+    expect(deleteSavedRecord).not.toHaveBeenCalled();
+
+    vi.mocked(deleteSavedRecord).mockResolvedValue(undefined);
+    const deleted = await handleApiRequest(request(path, "DELETE", { expectedVersion: 2 }), LOCAL);
+    expect(deleted.status).toBe(200);
+    expect(deleteSavedRecord).toHaveBeenCalledWith(DB, SESSION_ID, 2);
+    expect((await deleted.json()) as object).toMatchObject({ deletedRecordId: SESSION_ID });
+    vi.mocked(deleteSavedRecord).mockRejectedValueOnce(new TokiDataError("conflict", "stale"));
+    vi.mocked(deleteSavedRecord).mockRejectedValueOnce(new TokiDataError("not_found", "gone"));
+    const stale = await handleApiRequest(request(path, "DELETE", { expectedVersion: 1 }), LOCAL);
+    const missing = await handleApiRequest(request(path, "DELETE", { expectedVersion: 1 }), LOCAL);
+    expect([stale.status, missing.status]).toEqual([409, 404]);
   });
 
   it("rejects duplicate query keys and unsupported routes/methods", async () => {
