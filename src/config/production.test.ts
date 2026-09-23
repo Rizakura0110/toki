@@ -1,4 +1,5 @@
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   assertProductionConfig,
@@ -8,6 +9,7 @@ import {
 
 const DATABASE_ID = "01234567-89ab-cdef-0123-456789abcdef";
 const DATABASE_ID_KEY = ["database", "id"].join("_");
+const REPOSITORY_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
 describe("Toki production Wrangler config preparation", () => {
   it.each([
@@ -35,10 +37,12 @@ describe("Toki production Wrangler config preparation", () => {
     expect(assertProductionConfig(config, mode, DATABASE_ID)).toBe(true);
 
     const configDirectory = dirname(productionConfigPath(mode));
-    expect(resolve(configDirectory, config.main)).toMatch(/\/products\/toki\/src\/worker\.ts$/u);
-    expect(resolve(configDirectory, config.assets.directory)).toMatch(/\/products\/toki\/public$/u);
-    expect(resolve(configDirectory, config.d1_databases[0]?.migrations_dir ?? "")).toMatch(
-      /\/products\/toki\/migrations$/u,
+    expect(resolve(configDirectory, config.main)).toBe(resolve(REPOSITORY_ROOT, "src/worker.ts"));
+    expect(resolve(configDirectory, config.assets.directory)).toBe(
+      resolve(REPOSITORY_ROOT, "public"),
+    );
+    expect(resolve(configDirectory, config.d1_databases[0]?.migrations_dir ?? "")).toBe(
+      resolve(REPOSITORY_ROOT, "migrations"),
     );
   });
 
