@@ -1,4 +1,5 @@
 import {
+  TIMELINE_HOUR_HEIGHT,
   addDays,
   dayRange,
   formatTokyoDateTimeInput,
@@ -331,6 +332,7 @@ if (typeof document !== "undefined") {
       button.style.left = `${item.visualLeftPercent}%`;
       button.style.width = `${item.visualWidthPercent}%`;
       button.setAttribute("aria-label", recordLabel(record));
+      button.title = recordLabel(record);
       const time = document.createElement("span");
       time.className = "timeline-event-time";
       const startTime =
@@ -345,7 +347,7 @@ if (typeof document !== "undefined") {
       const description = document.createElement("span");
       description.className = "timeline-event-title";
       description.textContent = record.description;
-      button.replaceChildren(time, description);
+      button.replaceChildren(description, time);
       button.addEventListener("click", () => openEdit(record.id));
       day.appendChild(button);
     }
@@ -358,6 +360,8 @@ if (typeof document !== "undefined") {
       addDays(first, index),
     );
     ui.timeline.className = state.view === "week" ? "timeline-inner week" : "timeline-inner";
+    ui.timeline.style.setProperty("--timeline-hour-height", `${TIMELINE_HOUR_HEIGHT}px`);
+    ui.timeline.style.setProperty("--timeline-day-height", `${24 * TIMELINE_HOUR_HEIGHT}px`);
     const head = document.createElement("div");
     head.className = "timeline-head";
     const spacer = document.createElement("div");
@@ -378,7 +382,7 @@ if (typeof document !== "undefined") {
     for (let hour = 0; hour < 24; hour += 1) {
       const label = document.createElement("span");
       label.className = "timeline-hour";
-      label.style.top = `${hour * 60}px`;
+      label.style.top = `${(hour / 24) * 100}%`;
       label.textContent = `${String(hour).padStart(2, "0")}:00`;
       axis.appendChild(label);
     }

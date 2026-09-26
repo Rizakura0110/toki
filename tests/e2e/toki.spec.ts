@@ -1,5 +1,10 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
-import { addDays, dayRange, tokyoDateKey } from "../../public/calendar-core.js";
+import {
+  addDays,
+  dayRange,
+  parseTokyoDateTimeInput,
+  tokyoDateKey,
+} from "../../public/calendar-core.js";
 
 const ORIGIN = "http://127.0.0.1:8791";
 const CLOSED_ORIGIN = "http://127.0.0.1:8792";
@@ -96,6 +101,124 @@ test.afterEach(async ({ request }) => {
   }
   await post(request, `/api/v1/session/${payload.session.id}/discard`, {});
 });
+
+for (const mobile of [false, true]) {
+  test.describe(`short calendar labels ${mobile ? "mobile" : "desktop"}`, () => {
+    test.use({
+      viewport: mobile ? { width: 320, height: 740 } : { width: 1280, height: 800 },
+      isMobile: mobile,
+      hasTouch: mobile,
+    });
+
+    test("shows a full title line for second-long, adjacent, overlapping and midnight records", async ({
+      page,
+      request,
+    }, testInfo) => {
+      const dateKey = mobile ? "2042-01-15" : "2042-01-14";
+      const { startMs } = dayRange(dateKey);
+      const minute = 60_000;
+      const fixtures = [
+        { description: "開始", start: 0, end: 1000 },
+        { description: "確認", start: 9 * 60 * minute, end: 9 * 60 * minute + 1000 },
+        { description: "連絡", start: 9 * 60 * minute + 1000, end: 9 * 60 * minute + 2000 },
+        { description: "整理", start: 9 * 60 * minute + 2000, end: 9 * 60 * minute + 3000 },
+        { description: "一分", start: 12 * 60 * minute, end: 12 * 60 * minute + minute },
+        { description: "重複", start: 12 * 60 * minute, end: 12 * 60 * minute + 1000 },
+        { description: "終了", start: 24 * 60 * minute - 1000, end: 24 * 60 * minute },
+        { description: "日跨ぎ", start: 24 * 60 * minute - 1000, end: 24 * 60 * minute + 1000 },
+      ];
+      for (const fixture of fixtures) {
+        const response = await request.post("/api/v1/records", {
+          data: {
+            clientRequestId: crypto.randomUUID(),
+            description: fixture.description,
+            startedAtMs: startMs + fixture.start,
+            endedAtMs: startMs + fixture.end,
+          },
+          headers: { Origin: ORIGIN, "X-Toki-Client": "web" },
+        });
+        expect(response.status()).toBe(201);
+      }
+      const before = await recordsForDay(request, dateKey);
+      await page.goto("/calendar.html");
+      if (!mobile) await page.getByRole("button", { name: "日", exact: true }).click();
+      await page.locator("#calendar-date").fill(dateKey);
+      await page.locator("#calendar-date").dispatchEvent("change");
+
+      for (const view of mobile ? ["day"] : ["day", "week"]) {
+        if (view === "week") await page.getByRole("button", { name: "週", exact: true }).click();
+        await expect(page.locator("#calendar-loading")).toBeHidden();
+        await expect(page.locator(".timeline-day")).toHaveCount(view === "week" ? 7 : 1);
+        await expect(
+          page.locator(".timeline-event-title").filter({ hasText: /^確認$/u }),
+        ).toBeVisible();
+        const geometry = await page.locator(".timeline-event").evaluateAll((buttons) =>
+          buttons.map((button) => {
+            const title = button.querySelector(".timeline-event-title");
+            if (!(title instanceof HTMLElement)) throw new Error("Missing event title");
+            const rect = button.getBoundingClientRect();
+            const titleRect = title.getBoundingClientRect();
+            const dayRect = button.parentElement?.getBoundingClientRect();
+            return {
+              height: rect.height,
+              titleHeight: titleRect.height,
+              lineHeight: Number.parseFloat(getComputedStyle(title).lineHeight),
+              titleWidth: titleRect.width,
+              titleFirst: button.firstElementChild === title,
+              titleInside: titleRect.top >= rect.top && titleRect.bottom <= rect.bottom,
+              insideDay:
+                dayRect !== undefined &&
+                rect.top >= dayRect.top - 0.1 &&
+                rect.bottom <= dayRect.bottom + 0.1,
+              dayHeight: dayRect?.height,
+            };
+          }),
+        );
+        for (const item of geometry) {
+          expect(item.height).toBeGreaterThanOrEqual(43.9);
+          expect(item.titleHeight).toBeGreaterThanOrEqual(item.lineHeight - 0.1);
+          expect(item.titleWidth).toBeGreaterThanOrEqual(22);
+          expect(item.titleFirst && item.titleInside && item.insideDay).toBe(true);
+          expect(item.dayHeight).toBe(2880);
+        }
+        const marks = await page
+          .locator(".timeline-hour")
+          .evaluateAll((labels) =>
+            labels.slice(1, 3).map((label) => (label as HTMLElement).offsetTop),
+          );
+        expect(marks).toEqual([120, 240]);
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+          ),
+        ).toBe(true);
+        await page
+          .locator(".timeline-event-title")
+          .filter({ hasText: /^確認$/u })
+          .scrollIntoViewIfNeeded();
+        await page.screenshot({ path: testInfo.outputPath(`short-labels-${view}.png`) });
+
+        for (const description of ["確認", "連絡", "整理", "終了"]) {
+          const title = page
+            .locator(".timeline-event-title")
+            .filter({ hasText: new RegExp(`^${description}$`, "u") });
+          await title.click();
+          await expect(page.locator("#edit-description")).toHaveValue(description);
+          const fixture = fixtures.find((item) => item.description === description);
+          if (fixture === undefined) throw new Error(`Missing fixture: ${description}`);
+          expect(parseTokyoDateTimeInput(await page.locator("#edit-start").inputValue())).toBe(
+            startMs + fixture.start,
+          );
+          expect(parseTokyoDateTimeInput(await page.locator("#edit-end").inputValue())).toBe(
+            startMs + fixture.end,
+          );
+          await page.locator("#edit-cancel").click();
+        }
+      }
+      expect(await recordsForDay(request, dateKey)).toEqual(before);
+    });
+  });
+}
 
 test("desktop stopwatch survives reload, saves a cross-midnight record and rejects stale edits", async ({
   page,

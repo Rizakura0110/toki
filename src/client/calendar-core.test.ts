@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  TIMELINE_HOUR_HEIGHT,
+  TIMELINE_MIN_EVENT_HEIGHT,
   addDays,
   dayRange,
   formatTokyoDateTimeInput,
@@ -116,7 +118,9 @@ describe("day timeline layout", () => {
     expect(layout.map((item) => item.record.id)).toEqual(["first", "second"]);
     expect(layout.map((item) => item.widthPercent)).toEqual([50, 50]);
     expect(layout[0]?.heightPercent).toBeLessThan(0.1);
-    expect(layout[0]?.visualHeightPercent).toBe(0.75);
+    expect(((layout[0]?.visualHeightPercent ?? 0) / 100) * 24 * TIMELINE_HOUR_HEIGHT).toBeCloseTo(
+      TIMELINE_MIN_EVENT_HEIGHT,
+    );
     expect((layout[0]?.visualTopPercent ?? 0) + (layout[0]?.visualHeightPercent ?? 0)).toBe(100);
   });
 
@@ -133,5 +137,55 @@ describe("day timeline layout", () => {
     const good = record("good", 1, 2);
     const bad = { id: "bad", startedAtMs: 200, endedAtMs: null };
     expect(layoutDayRecords([bad, good], dateKey).map((item) => item.record.id)).toEqual(["good"]);
+  });
+
+  it("preserves real times while giving second-long and midnight records at least 44 pixels", () => {
+    const records = [
+      record("start", 0, 1 / 3600),
+      record("minute", 9, 9 + 1 / 60),
+      record("long", 12, 14),
+      record("end", 24 - 1 / 3600, 24),
+      record("cross", 24 - 1 / 3600, 24 + 1 / 3600),
+    ];
+    const layout = layoutDayRecords(records, dateKey);
+    expect(TIMELINE_HOUR_HEIGHT).toBe(120);
+    expect(TIMELINE_MIN_EVENT_HEIGHT).toBe(44);
+    for (const item of layout) {
+      expect((item.visualHeightPercent / 100) * 24 * TIMELINE_HOUR_HEIGHT).toBeGreaterThanOrEqual(
+        44 - 0.0001,
+      );
+      expect(item.visualTopPercent).toBeGreaterThanOrEqual(0);
+      expect(item.visualTopPercent + item.visualHeightPercent).toBeLessThanOrEqual(100);
+      expect(item.record).toBe(records.find(({ id }) => id === item.record.id));
+      expect(item.heightPercent).toBeCloseTo(
+        ((item.clippedEndMs - item.clippedStartMs) / (24 * hour)) * 100,
+      );
+    }
+    const long = layout.find(({ record: entry }) => entry.id === "long");
+    expect(long?.visualHeightPercent).toBe(long?.heightPercent);
+    expect(long?.visualTopPercent).toBe(long?.topPercent);
+  });
+
+  it("allocates collision-free visual lanes to enlarged records near both day edges", () => {
+    const records = [
+      record("first", 0, 1 / 3600),
+      record("adjacent", 1 / 3600, 2 / 3600),
+      record("overlap", 0, 1 / 60),
+      record("before-end", 24 - 1 / 60, 24 - 1 / 3600),
+      record("end", 24 - 1 / 3600, 24),
+    ];
+    const layout = layoutDayRecords(records, dateKey);
+    for (const [index, first] of layout.entries()) {
+      for (const second of layout.slice(index + 1)) {
+        const verticalOverlap =
+          first.visualTopPercent < second.visualTopPercent + second.visualHeightPercent &&
+          second.visualTopPercent < first.visualTopPercent + first.visualHeightPercent;
+        if (!verticalOverlap) continue;
+        expect(
+          first.visualLeftPercent + first.visualWidthPercent <= second.visualLeftPercent ||
+            second.visualLeftPercent + second.visualWidthPercent <= first.visualLeftPercent,
+        ).toBe(true);
+      }
+    }
   });
 });

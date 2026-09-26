@@ -184,6 +184,13 @@
   outline: 3px solid #258ec7;
   outline-offset: -3px;
 }
+.timeline-note {
+  margin: 0;
+  padding: 0 20px 16px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
 .timeline-inner {
   --day-count: 1;
 }
@@ -217,7 +224,7 @@
 .timeline-axis,
 .timeline-day {
   position: relative;
-  height: 1440px;
+  height: var(--timeline-day-height);
 }
 .timeline-axis {
   border-right: 1px solid var(--line);
@@ -246,7 +253,7 @@
     #e8ebe7 0,
     #e8ebe7 1px,
     transparent 1px,
-    transparent 60px
+    transparent var(--timeline-hour-height)
   );
 }
 .timeline-day.today {
@@ -275,12 +282,14 @@
   background: #f7d9c5;
 }
 .timeline-event-time {
+  flex-shrink: 0;
   overflow: hidden;
   white-space: nowrap;
   font-size: 10px;
   font-weight: 700;
 }
 .timeline-event-title {
+  flex-shrink: 0;
   overflow: hidden;
   font-size: 11px;
   font-weight: 700;

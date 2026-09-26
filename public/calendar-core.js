@@ -3,7 +3,11 @@
 // operations independent of the device's own time zone.
 const TOKYO_OFFSET_MS = 9 * 60 * 60 * 1_000;
 const DAY_MS = 24 * 60 * 60 * 1_000;
-const MIN_VISIBLE_PERCENT = 0.75;
+// Share the rendered scale with the lane calculation: enlarging only in CSS
+// would let adjacent short records cover each other's labels and click targets.
+export const TIMELINE_HOUR_HEIGHT = 120;
+export const TIMELINE_MIN_EVENT_HEIGHT = 44;
+const MIN_VISIBLE_PERCENT = (TIMELINE_MIN_EVENT_HEIGHT / (24 * TIMELINE_HOUR_HEIGHT)) * 100;
 
 /**
  * @typedef {{ id: string, startedAtMs: number, endedAtMs: number | null }} CalendarRecord
