@@ -105,6 +105,19 @@ export function formatTokyoDateTimeInput(epochMs) {
   return `${utcDateKey(local)}T${twoDigits(local.getUTCHours())}:${twoDigits(local.getUTCMinutes())}:${twoDigits(local.getUTCSeconds())}`;
 }
 
+/** Minute-only manual entry; measured records keep their second precision.
+ * @param {number} epochMs @returns {string}
+ */
+export function formatTokyoMinuteInput(epochMs) {
+  return formatTokyoDateTimeInput(epochMs).slice(0, 16);
+}
+
+/** @param {string} value @returns {number | null} */
+export function parseTokyoMinuteInput(value) {
+  const epochMs = parseTokyoDateTimeInput(value);
+  return epochMs === null ? null : Math.floor(epochMs / 60_000) * 60_000;
+}
+
 /**
  * Strictly interpret a datetime-local control's minute or second precision as
  * Japan local time. Milliseconds are intentionally omitted from the control.

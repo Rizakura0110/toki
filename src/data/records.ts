@@ -110,10 +110,11 @@ function normalizeDescription(value: string): string {
     throw new TokiDataError("validation", "Description is required");
   }
   const description = value.trim();
-  if (description.length < 1 || description.length > MAX_DESCRIPTION_LENGTH) {
-    throw new TokiDataError("validation", "Description must be 1 to 500 characters");
+  if (description.length > MAX_DESCRIPTION_LENGTH) {
+    throw new TokiDataError("validation", "Description must be at most 500 characters");
   }
-  return description;
+  // Keep the existing saved-record DB constraint and old clients compatible.
+  return description || "無題";
 }
 
 function requireInterval(startedAtMs: number, endedAtMs: number): void {

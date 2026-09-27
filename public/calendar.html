@@ -119,9 +119,9 @@
           <input id="edit-start" type="datetime-local" step="1" required />
           <label for="edit-end">終了日時 <span>日本時間</span></label>
           <input id="edit-end" type="datetime-local" step="1" required />
-          <label for="edit-description">この時間にしたこと</label>
-          <textarea id="edit-description" rows="4" maxlength="500" required></textarea>
-          <p class="edit-help">内容は1〜500文字、1件の時間は最大366日です。</p>
+          <label for="edit-description">この時間にしたこと（任意）</label>
+          <textarea id="edit-description" rows="4" maxlength="500"></textarea>
+          <p class="edit-help">内容は500文字以内、空欄は「無題」で保存します。1件の時間は最大366日です。</p>
         </div>
         <div id="edit-error" class="edit-error" role="alert" hidden>
           <p id="edit-error-text"></p>
@@ -151,12 +151,12 @@
         </div>
         <div class="edit-fields">
           <label for="create-start">開始日時 <span>日本時間</span></label>
-          <input id="create-start" type="datetime-local" step="1" required />
+          <input id="create-start" type="datetime-local" step="60" required />
           <label for="create-end">終了日時 <span>日本時間</span></label>
-          <input id="create-end" type="datetime-local" step="1" required />
-          <label for="create-description">この時間にしたこと</label>
-          <textarea id="create-description" rows="4" maxlength="500" required></textarea>
-          <p class="edit-help">内容は1〜500文字、1件の時間は最大366日です。</p>
+          <input id="create-end" type="datetime-local" step="60" required />
+          <label for="create-description">この時間にしたこと（任意）</label>
+          <textarea id="create-description" rows="4" maxlength="500"></textarea>
+          <p class="edit-help">日時は分単位（秒は00）です。内容は500文字以内、空欄は「無題」で保存します。1件の時間は最大366日です。</p>
         </div>
         <div id="create-error" class="edit-error" role="alert" hidden>
           <p id="create-error-text"></p>

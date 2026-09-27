@@ -211,7 +211,7 @@ describe("Toki D1 session repository", () => {
       createManualRecord(db, { ...input, endedAtMs: START + MAX_RECORD_MS + 1 }, START),
     ).rejects.toMatchObject({ code: "validation" });
     await expect(
-      createManualRecord(db, { ...input, description: " " }, START),
+      createManualRecord(db, { ...input, description: "x".repeat(501) }, START),
     ).rejects.toMatchObject({ code: "validation" });
     await expect(
       createManualRecord(db, { ...input, clientRequestId: measured.clientRequestId }, START),
@@ -325,6 +325,78 @@ describe("Toki D1 session repository", () => {
     expect(await listSavedRecords(db, START + 30_000, START + 120_000)).toEqual([saved]);
     expect(await listSavedRecords(db, START + 60_000, START + 120_000)).toEqual([]);
     expect(await listSavedRecords(db, START - 60_000, START)).toEqual([]);
+  });
+
+  it.each(["stopwatch", "timer"] as const)(
+    "saves blank %s descriptions as untitled with idempotent retries",
+    async (mode) => {
+      const db = localDb();
+      const running = await startSession(
+        db,
+        {
+          mode,
+          ...(mode === "timer" ? { timerSeconds: 1 } : {}),
+          clientRequestId: crypto.randomUUID(),
+        },
+        START + 123,
+      );
+      const stopped = await stopSession(db, running.id, START + 1123);
+      const saved = await saveSession(db, running.id, "", START + 1200);
+      expect(saved).toMatchObject({
+        status: "saved",
+        description: "無題",
+        startedAtMs: stopped.startedAtMs,
+        endedAtMs: stopped.endedAtMs,
+      });
+      expect(await saveSession(db, running.id, " \t\n　", START + 1300)).toEqual(saved);
+      expect(await listSavedRecords(db, START, START + 2000)).toEqual([saved]);
+    },
+  );
+
+  it("defaults blank manual and edited descriptions without rounding existing timestamps", async () => {
+    const db = localDb();
+    const input = {
+      startedAtMs: START + 123,
+      endedAtMs: START + 31234,
+      description: " \t\n　",
+      clientRequestId: crypto.randomUUID(),
+    };
+    const saved = await createManualRecord(db, input, START + 32000);
+    expect(saved).toMatchObject({
+      description: "無題",
+      startedAtMs: input.startedAtMs,
+      endedAtMs: input.endedAtMs,
+    });
+    expect(await createManualRecord(db, { ...input, description: "" }, START + 33000)).toEqual(
+      saved,
+    );
+    const named = await editSavedRecord(
+      db,
+      saved.id,
+      { ...input, description: "作業", expectedVersion: saved.version },
+      START + 34000,
+    );
+    const cleared = await editSavedRecord(
+      db,
+      saved.id,
+      { ...input, description: "", expectedVersion: named.version },
+      START + 35000,
+    );
+    expect(cleared).toMatchObject({
+      description: "無題",
+      startedAtMs: input.startedAtMs,
+      endedAtMs: input.endedAtMs,
+      version: named.version + 1,
+    });
+    await expect(
+      editSavedRecord(
+        db,
+        saved.id,
+        { ...input, description: "", expectedVersion: named.version },
+        START + 36000,
+      ),
+    ).rejects.toMatchObject({ code: "conflict" });
+    expect(await listSavedRecords(db, START, START + 60000)).toEqual([cleared]);
   });
 
   it("persists a timer deadline and materializes expiry exactly once on a later access", async () => {
@@ -501,7 +573,7 @@ describe("Toki D1 session repository", () => {
 
     const running = await startSession(db, { mode: "stopwatch", clientRequestId: "valid" }, START);
     await stopSession(db, running.id, START + 1000);
-    for (const description of ["", "  ", "x".repeat(501)]) {
+    for (const description of [null as never, "x".repeat(501)]) {
       await expect(saveSession(db, running.id, description, START + 1001)).rejects.toMatchObject({
         code: "validation",
       });
@@ -533,7 +605,7 @@ describe("Toki D1 session repository", () => {
       ),
     ).rejects.toMatchObject({ code: "validation" });
     await expect(
-      editSavedRecord(db, saved.id, { ...basic, description: " " }, START + 70_000),
+      editSavedRecord(db, saved.id, { ...basic, description: "x".repeat(501) }, START + 70_000),
     ).rejects.toMatchObject({ code: "validation" });
     await expect(
       editSavedRecord(db, saved.id, { ...basic, expectedVersion: 0 }, START + 70_000),

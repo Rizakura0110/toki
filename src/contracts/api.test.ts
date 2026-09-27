@@ -72,11 +72,35 @@ describe("session request contracts", () => {
 describe("saved record request contracts", () => {
   it("trims meaningful descriptions and bounds their length", () => {
     expect(saveSessionSchema.parse({ description: "  作業  " })).toEqual({ description: "作業" });
-    expect(saveSessionSchema.safeParse({ description: "   " }).success).toBe(false);
+    expect(saveSessionSchema.parse({ description: "   " })).toEqual({ description: "" });
     expect(saveSessionSchema.safeParse({ description: "a".repeat(500) }).success).toBe(true);
     expect(saveSessionSchema.safeParse({ description: "a".repeat(501) }).success).toBe(false);
     expect(saveSessionSchema.safeParse({ description: "作業", extra: true }).success).toBe(false);
   });
+
+  it.each(["", " \t\n　"])(
+    "accepts blank descriptions for save, create and edit: %j",
+    (description) => {
+      expect(saveSessionSchema.parse({ description })).toEqual({ description: "" });
+      const interval = { startedAtMs: START_MS, endedAtMs: START_MS + 60_000, description };
+      expect(
+        createRecordSchema.parse({ ...interval, clientRequestId: REQUEST_ID }).description,
+      ).toBe("");
+      expect(editRecordSchema.parse({ ...interval, expectedVersion: 1 }).description).toBe("");
+    },
+  );
+
+  it.each([undefined, null, 0, {}, "x".repeat(501)])(
+    "rejects invalid description values: %j",
+    (description) => {
+      expect(saveSessionSchema.safeParse({ description }).success).toBe(false);
+      const interval = { startedAtMs: START_MS, endedAtMs: START_MS + 60_000, description };
+      expect(
+        createRecordSchema.safeParse({ ...interval, clientRequestId: REQUEST_ID }).success,
+      ).toBe(false);
+      expect(editRecordSchema.safeParse({ ...interval, expectedVersion: 1 }).success).toBe(false);
+    },
+  );
 
   it("accepts a bounded edit and rejects chronology, duration, version, and unknown fields", () => {
     const valid = {
@@ -107,7 +131,7 @@ describe("saved record request contracts", () => {
     for (const invalid of [
       { ...valid, endedAtMs: START_MS },
       { ...valid, endedAtMs: START_MS + 366 * DAY_MS + 1 },
-      { ...valid, description: " " },
+      { ...valid, description: "x".repeat(501) },
       { ...valid, clientRequestId: "invalid" },
       { ...valid, mode: "stopwatch" },
     ]) {

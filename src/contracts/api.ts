@@ -4,7 +4,7 @@ const MAX_TIMESTAMP_MS = 8_640_000_000_000_000;
 const MAX_RECORD_OR_QUERY_DURATION_MS = 366 * 24 * 60 * 60 * 1_000;
 
 const epochMsSchema = z.int().positive().max(MAX_TIMESTAMP_MS);
-const descriptionSchema = z.string().trim().min(1).max(500);
+const descriptionSchema = z.string().trim().max(500);
 
 export const sessionIdSchema = z.uuid();
 export const recordIdSchema = sessionIdSchema;

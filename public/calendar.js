@@ -3,8 +3,10 @@ import {
   addDays,
   dayRange,
   formatTokyoDateTimeInput,
+  formatTokyoMinuteInput,
   layoutDayRecords,
   parseTokyoDateTimeInput,
+  parseTokyoMinuteInput,
   tokyoDateKey,
   weekRange,
   weekStart,
@@ -279,8 +281,8 @@ if (typeof document !== "undefined") {
 
   function openCreate() {
     const startMs = dayRange(state.dateKey).startMs + 9 * 60 * 60 * 1000;
-    ui.createStart.value = formatTokyoDateTimeInput(startMs);
-    ui.createEnd.value = formatTokyoDateTimeInput(startMs + 60 * 60 * 1000);
+    ui.createStart.value = formatTokyoMinuteInput(startMs);
+    ui.createEnd.value = formatTokyoMinuteInput(startMs + 60 * 60 * 1000);
     ui.createDescription.value = "";
     state.createRequestId = crypto.randomUUID();
     state.createRetryPayload = null;
@@ -513,7 +515,6 @@ if (typeof document !== "undefined") {
       startMs <= 0 ||
       endMs <= startMs ||
       endMs - startMs > MAX_RECORD_MS ||
-      description.length < 1 ||
       description.length > 500
     ) {
       showEditError(
@@ -619,8 +620,8 @@ if (typeof document !== "undefined") {
     }
     let payload = state.createRetryPayload;
     if (payload === null) {
-      const startedAtMs = parseTokyoDateTimeInput(ui.createStart.value);
-      const endedAtMs = parseTokyoDateTimeInput(ui.createEnd.value);
+      const startedAtMs = parseTokyoMinuteInput(ui.createStart.value);
+      const endedAtMs = parseTokyoMinuteInput(ui.createEnd.value);
       const description = ui.createDescription.value.trim();
       if (
         startedAtMs === null ||
@@ -629,7 +630,6 @@ if (typeof document !== "undefined") {
         !availableDate(ui.createStart.value.slice(0, 10), "day") ||
         endedAtMs <= startedAtMs ||
         endedAtMs - startedAtMs > MAX_RECORD_MS ||
-        description.length < 1 ||
         description.length > 500
       ) {
         showCreateError(

@@ -5,8 +5,10 @@ import {
   addDays,
   dayRange,
   formatTokyoDateTimeInput,
+  formatTokyoMinuteInput,
   layoutDayRecords,
   parseTokyoDateTimeInput,
+  parseTokyoMinuteInput,
   tokyoDateKey,
   weekRange,
   weekStart,
@@ -54,6 +56,15 @@ describe("Tokyo calendar arithmetic", () => {
     expect(formatTokyoDateTimeInput(epochMs + 999)).toBe("2026-09-23T00:05:09");
   });
 
+  it("uses minute-only manual inputs with zero seconds without changing the edit parser", () => {
+    const epochMs = Date.UTC(2026, 8, 22, 15, 5, 59, 123);
+    expect(formatTokyoMinuteInput(epochMs)).toBe("2026-09-23T00:05");
+    expect(parseTokyoMinuteInput("2026-09-23T00:05")).toBe(Date.UTC(2026, 8, 22, 15, 5));
+    expect(parseTokyoMinuteInput("2026-09-23T00:05:59")).toBe(Date.UTC(2026, 8, 22, 15, 5));
+    expect(parseTokyoMinuteInput("2026-09-23T23:59:59")).toBe(Date.UTC(2026, 8, 23, 14, 59));
+    expect(parseTokyoDateTimeInput("2026-09-23T00:05:59")).toBe(epochMs - 123);
+  });
+
   it.each([
     "2026-02-30T12:00",
     "2026-09-23T24:00",
@@ -65,6 +76,7 @@ describe("Tokyo calendar arithmetic", () => {
     "not a date",
   ])("rejects malformed datetime-local value %s", (value) => {
     expect(parseTokyoDateTimeInput(value)).toBeNull();
+    expect(parseTokyoMinuteInput(value)).toBeNull();
   });
 });
 

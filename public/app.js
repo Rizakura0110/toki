@@ -433,7 +433,7 @@ if (typeof document !== "undefined") {
       void mutate(
         `/api/v1/session/${encodeURIComponent(id)}/stop`,
         {},
-        "計測を終了しました。内容を入力してください。",
+        "計測を終了しました。必要なら内容を入力し、保存してください。",
       );
   });
 
@@ -442,8 +442,8 @@ if (typeof document !== "undefined") {
     const id = state.session?.id;
     const description = ui.description.value.trim();
     if (!id) return;
-    if (description.length < 1 || description.length > 500) {
-      showError("内容を1〜500文字で入力してください。", false);
+    if (description.length > 500) {
+      showError("内容は500文字以内で入力してください。", false);
       render();
       return;
     }
