@@ -12,7 +12,7 @@ Phase 47では、短時間の記録でも内容が1行見えるように、カ�
 
 Phase 48では、手動の新規登録フォームを分単位（秒は00）にし、内容を任意にしました。手動・ストップウォッチ・タイマーの保存と記録編集で空欄/空白だけを受け付け、保存時に「無題」で補完するため、カレンダーと記録一覧にも「無題」が表示されます。既存記録の編集は引き続き秒単位で、内容だけの編集では元の秒・ミリ秒を保持します。2026-09-27に所有者の承認後、検証済みcommit `bab03ef`をToki Workerへ本番反映しました。認証済みブラウザで分単位・内容任意の手動登録フォームと計測画面を確認し、未認証10経路のAccess保護も検証済みです。DB schema/migration・記録の更新・進行中の計測・認証/料金設定は変更していません。空欄保存と再読み込み後の保持はローカルE2Eで検証し、本番では確認用の記録を保存していません。
 
-2026-10-04に、基盤・Tech Inbox・Daymarkと技術スタックを揃える方針とPhase 49〜56の移行手順を記録しました。React/React Router・Tailwind CSS/Vite・Hono・Drizzle ORMへ移行する計画で、独立repository/Worker/D1、現在の機能・URL・記録・PWAを維持します。今回は文書のみの変更で、移行の実装・依存導入・本番反映は未着手です。
+2026-10-04に、基盤・Tech Inbox・Daymarkと技術スタックを揃える方針とPhase 49〜56の移行手順を記録しました。React/React Router・Tailwind CSS/Vite・Hono・Drizzle ORMへ移行する計画で、独立repository/Worker/D1、現在の機能・URL・記録・PWAを維持します。Phase 50では移行前の回帰テストと合成データを追加し、依存を再確認しました。画面・APIの実装や物理DBはまだ置換せず、本番も変更していません。
 
 製品仕様とフェーズ計画は基盤repositoryの`docs/toki-design.md`・`docs/toki-roadmap.md`を正とします。このrepositoryへ基盤/Tech Inbox/Daymarkのsourceをコピーしたり、実データやCloudflare資格情報を追加したりしません。
 
@@ -29,6 +29,16 @@ pnpm check
 `pnpm check`はformat、lint、生成型、TypeScript、coverage付きtest、local D1 migrationと`time_sessions`検査、Worker dry-run build、ローカルChromium E2E、依存監査を実行します。E2Eは毎回専用の一時D1を使い、認証バイパスあり・なしの2つのloopback Workerを検証します。Cloudflareのremote DBやWorkerは作成・変更しません。
 
 必要な場合に限り、`pnpm dev`でローカルWorkerを起動できます。`/__local/db`と画面/APIの認証バイパスは明示的なローカル起動引数かつloopback HTTPに限定します。`.dev.vars`や`.env`は追跡しません。本番では画面/APIとも本人限定Accessに加えてWorkerでJWTを検証します。
+
+### Phase 50の移行比較テスト
+
+`tests/fixtures/toki-baseline.ts`は架空の記録だけを定義します。本番exportを置き換えとして使わないでください。`src/api/compatibility.test.ts`は実SQLiteを通したHTTP応答全体、ミリ秒・null・版数・再試行・削除後の復活防止・入力境界を比較します。`src/data/migration-baseline.test.ts`は既存migrationによる全列保持、未完了4状態、列・部分index・削除trigger・CHECK/unique制約を検証します。SQLiteアダプターはD1を完全再現するものではないため、WranglerのローカルD1とE2Eも引き続き必須です。
+
+`tests/e2e/migration-baseline.spec.ts`はPC/320pxで既存URL・戻る/進む・再読み込みと計測状態の保持、通常/集中表示で毎秒APIを呼ばないこと、HTMLが参照する実際のassetの保護、未知pathの404を固定します。保存・編集・削除・空欄の無題・時刻精度・短い記録の表示・PWA identityは既存テストと併せて検証します。後続移行ではテストを新実装に接続し、期待する外部動作を変更して通すことはしません。
+
+Phase 50の全品質検証は単体/統合246件・ブラウザ16件が成功し、依存修正後のauditは指摘0件でした。これはローカル検証であり、本番反映やiPhone実機の再確認は行っていません。
+
+依存再監査で開発用Miniflare配下のUndiciにhighの指摘が見つかったため、親versionを限定して`undici 7.29.0 → 7.29.1`だけを更新しました。7日gate・integrity・install script制限を維持し、直接依存は不変です。[Undici公式advisory](https://github.com/nodejs/undici/security/advisories/GHSA-rfgv-xxqx-mfg5)を参照してください。移行先の固定版・追加の修正候補と段階構成は、基盤repositoryの`docs/dependency-baseline.md`・`docs/toki-roadmap.md`に記録します。新スタックの実際のinstall/buildはPhase 51以降で検証します。
 
 ## 本番設定の事前準備（Cloudflareへの変更なし）
 
