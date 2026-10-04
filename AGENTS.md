@@ -6,6 +6,13 @@
 - 通常のGit pushは本番deploy、Cloudflare resource作成、remote migration、課金変更を許可しません。本番操作には対象を明示した別承認が必要です。
 - Phase 36は非機密のlocal接続stubだけです。業務table/API、Access JWT検証、画面、PWAは後続フェーズに分けます。
 
+## 技術スタック統一方針
+
+- 2026-10-04の所有者指示により、Tokiも基盤・Tech Inbox・Daymarkと技術を揃える。目標はTypeScript、React/React DOM・React Router、Tailwind CSS・Vite（React/Tailwind/Cloudflare plugins）、Hono、Drizzle ORM/D1。Zod・jose/Cloudflare Access、Node.js/pnpm・Wrangler・Biome・Vitest/Testing Library・Playwright・GitHub Actionsも共通基準に揃える。
+- 別repository・別Worker・別D1・別Accessと入口リンクの境界は維持し、基盤や他製品の実装をimportしない。既存の素のJavaScript・独自router・直接SQLは移行元であり、新製品用の標準ではない。
+- 基盤の検証済み完全versionと依存基準を出発点とし、導入前に脆弱性・互換性・7日gate・integrityを再確認する。独断で別技術へ置換・省略しない。例外が必要なら理由と比較案を提示し、所有者の承認を得る。
+- 移行は基盤repositoryの`docs/toki-roadmap.md` Phase 49〜56に従う。現時点は方針・手順の文書化だけで、実装・依存導入・本番変更は未着手。既存の機能、API、記録と未完了計測、URL、PWA identityを保ち、物理DB schema/migration変更は前提にしない。
+
 ## Cloudflare認証の誤診を繰り返さないための必須手順
 
 - 2026-09-23は最新tokenが有効なのに期限切れと誤診した。原因は古い継承環境、制御文字入りAccount ID、sandbox内の`launchctl getenv`が空になる挙動の誤認だった。許可されたsandbox外で最新設定を取得し、子プロセスへ明示することで、再ローテーション・再起動なしにdeployできた。
