@@ -6,7 +6,6 @@
   "workers_dev": false,
   "preview_urls": false,
   "assets": {
-    "directory": "./public",
     "binding": "ASSETS",
     "html_handling": "none",
     "not_found_handling": "none",
@@ -16,6 +15,7 @@
     {
       "binding": "DB",
       "database_name": "toki-local",
+      "migrations_dir": "./migrations",
       "remote": false
     }
   ]

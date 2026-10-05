@@ -154,11 +154,19 @@ for (const mode of ["stopwatch", "timer"] as const) {
   });
 }
 
-test("legacy documents protect their actual linked assets and unknown URLs stay 404", async ({
+test("legacy documents protect built hashed assets and source or unknown URLs stay 404", async ({
   page,
   request,
 }) => {
   const paths = new Set(["/", "/index.html", "/calendar.html"]);
+  const browserModules = new Set<string>();
+  page.on("request", (outgoing) => {
+    const url = new URL(outgoing.url());
+    if (url.pathname.startsWith("/assets/")) {
+      expect(url.origin).toBe(ORIGIN);
+      browserModules.add(url.pathname);
+    }
+  });
   for (const path of ["/index.html", "/calendar.html"]) {
     const document = await page.goto(path);
     expect(document?.status()).toBe(200);
@@ -170,11 +178,11 @@ test("legacy documents protect their actual linked assets and unknown URLs stay 
       "crossorigin",
       "use-credentials",
     );
-    // Discover entrypoints from HTML: future hashed Vite assets must pass the
-    // same perimeter without freezing the current JavaScript/CSS file names.
+    // Discover the actual Vite outputs rather than pinning generated hashes.
+    // Include shared module-preload chunks as well as page entrypoints.
     const linkedPaths = await page
       .locator(
-        'script[src], link[rel="stylesheet"], link[rel="manifest"], link[rel="icon"], link[rel="apple-touch-icon"]',
+        'script[src], link[rel="stylesheet"], link[rel="modulepreload"], link[rel="manifest"], link[rel="icon"], link[rel="apple-touch-icon"]',
       )
       .evaluateAll((elements) =>
         elements.map((element) => {
@@ -188,6 +196,13 @@ test("legacy documents protect their actual linked assets and unknown URLs stay 
       );
     for (const linkedPath of linkedPaths) paths.add(linkedPath);
   }
+  expect(browserModules.size).toBeGreaterThanOrEqual(3);
+  for (const path of browserModules) paths.add(path);
+  for (const path of paths) {
+    if (path.endsWith(".js") || path.endsWith(".css")) {
+      expect(path).toMatch(/^\/assets\/[A-Za-z0-9_-]+-[A-Za-z0-9_-]{8}\.(?:js|css)$/u);
+    }
+  }
   for (const path of paths) {
     const allowed = await request.get(path);
     expect(allowed.status(), path).toBe(200);
@@ -197,12 +212,37 @@ test("legacy documents protect their actual linked assets and unknown URLs stay 
     const denied = await request.get(`${CLOSED_ORIGIN}${path}`);
     expect(denied.status(), path).toBe(403);
     expect(await denied.text(), path).toBe("Unavailable");
+    const head = await request.head(path);
+    expect(head.status(), path).toBe(200);
+    expect(head.headers()["cache-control"], path).toBe("no-store");
+    expect(await head.body(), path).toHaveLength(0);
   }
-  for (const path of ["/not-a-toki-page", "/not-a-toki-page.html", "/assets/missing.js"]) {
+  for (const path of [
+    "/not-a-toki-page",
+    "/not-a-toki-page.html",
+    "/assets/missing.js",
+    "/assets/missing-Abcd1234.js",
+    "/app.js",
+    "/styles.css",
+    "/calendar.js",
+    "/calendar.css",
+    "/calendar-core.js",
+    "/src/client/app.js",
+    "/src/worker.ts",
+    "/.vite/manifest.json",
+    "/.assetsignore",
+    "/wrangler.jsonc",
+    "/@vite/client",
+    "/@react-refresh",
+    ...[...browserModules].map((path) => `${path}.map`),
+  ]) {
     const response = await request.get(path);
     expect(response.status(), path).toBe(404);
     expect(response.headers()["cache-control"], path).toBe("no-store");
     expect(await response.text(), path).toBe("Not found");
+    const denied = await request.get(`${CLOSED_ORIGIN}${path}`);
+    expect(denied.status(), path).toBe(403);
+    expect(await denied.text(), path).toBe("Unavailable");
   }
   const head = await request.head("/api/v1/session");
   expect(head.status()).toBe(405);

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { lstat, mkdir, rename, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
@@ -8,6 +8,7 @@ const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const temporaryRoot = join(repositoryRoot, ".tmp");
 const modes = Object.freeze({ stage: false, live: true });
 const databaseIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+const builtAssetPath = /^\/assets\/[A-Za-z0-9_-]+-[A-Za-z0-9_-]{8}\.(?:js|css)$/u;
 
 /** @typedef {"stage" | "live"} ProductionMode */
 
@@ -32,12 +33,13 @@ export function buildProductionConfig(mode, databaseId) {
   return {
     $schema: "../node_modules/wrangler/config-schema.json",
     name: "toki",
-    main: "../src/worker.ts",
+    main: "../dist/toki/index.js",
+    no_bundle: true,
     compatibility_date: "2026-08-15",
     workers_dev: modes[/** @type {ProductionMode} */ (mode)],
     preview_urls: false,
     assets: {
-      directory: "../public",
+      directory: "../dist/client",
       binding: "ASSETS",
       html_handling: "none",
       not_found_handling: "none",
@@ -67,9 +69,118 @@ export function assertProductionConfig(config, mode, databaseId) {
   const expected = /** @type {ReturnType<typeof buildProductionConfig>} */ (config);
   const database = expected.d1_databases[0];
   assert.ok(database);
-  assert.equal(resolve(dirname(path), expected.main), join(repositoryRoot, "src/worker.ts"));
-  assert.equal(resolve(dirname(path), expected.assets.directory), join(repositoryRoot, "public"));
+  assert.equal(resolve(dirname(path), expected.main), join(repositoryRoot, "dist/toki/index.js"));
+  assert.equal(
+    resolve(dirname(path), expected.assets.directory),
+    join(repositoryRoot, "dist/client"),
+  );
   assert.equal(resolve(dirname(path), database.migrations_dir), join(repositoryRoot, "migrations"));
+  return true;
+}
+
+/** @param {string} path */
+async function assertRegularArtifact(path) {
+  const status = await lstat(path);
+  assert.ok(
+    status.isFile() && !status.isSymbolicLink() && status.size > 0,
+    "Build artifacts must be non-empty regular files.",
+  );
+}
+
+/**
+ * Validate the Vite output, never silently fall back to source or public/.
+ * A synthetic root is supported for local tests; the writer always uses this repository.
+ * This checks artifact shape, not release approval or build provenance.
+ * @param {string} root
+ */
+export async function assertBuiltArtifacts(root = repositoryRoot) {
+  const workerDirectory = join(root, "dist/toki");
+  const clientDirectory = join(root, "dist/client");
+  for (const directory of [
+    "dist",
+    "dist/toki",
+    "dist/client",
+    "dist/client/assets",
+    "dist/client/icons",
+  ]) {
+    const status = await lstat(join(root, directory));
+    assert.ok(
+      status.isDirectory() && !status.isSymbolicLink(),
+      "Build directories must not be symlinks.",
+    );
+  }
+  await assertRegularArtifact(join(workerDirectory, "index.js"));
+  await assertRegularArtifact(join(workerDirectory, "wrangler.json"));
+  const config = JSON.parse(await readFile(join(workerDirectory, "wrangler.json"), "utf8"));
+  assert.equal(config.name, "toki");
+  assert.equal(config.main, "index.js");
+  assert.equal(config.no_bundle, true);
+  assert.equal(config.workers_dev, false);
+  assert.equal(config.preview_urls, false);
+  assert.deepStrictEqual(
+    config.vars ?? {},
+    {},
+    "Build config must not include auth or bypass variables.",
+  );
+  assert.deepStrictEqual(
+    config.env ?? {},
+    {},
+    "Build config must not include alternate environments.",
+  );
+  assert.deepStrictEqual(
+    config.definedEnvironments ?? [],
+    [],
+    "Build config must not include alternate environments.",
+  );
+  assert.ok(Array.isArray(config.d1_databases) && config.d1_databases.length === 1);
+  const database = config.d1_databases[0];
+  assert.equal(database.binding, "DB");
+  assert.equal(database.database_name, "toki-local");
+  assert.equal(database.remote, false);
+  assert.equal(Object.hasOwn(database, "database_id"), false);
+  assert.equal(typeof database.migrations_dir, "string");
+  assert.equal(resolve(workerDirectory, database.migrations_dir), resolve(root, "migrations"));
+  assert.deepStrictEqual(config.assets, {
+    directory: "../client",
+    binding: "ASSETS",
+    html_handling: "none",
+    not_found_handling: "none",
+    run_worker_first: true,
+  });
+
+  for (const html of ["index.html", "calendar.html"]) {
+    await assertRegularArtifact(join(clientDirectory, html));
+    const source = await readFile(join(clientDirectory, html), "utf8");
+    const references = [...source.matchAll(/<(?:script|link)\b[^>]*(?:src|href)="([^"]+)"[^>]*>/gu)]
+      .map((match) => match[1])
+      .filter((path) => path !== undefined && /\.(?:js|css)$/u.test(path));
+    assert.ok(
+      references.some((path) => path?.endsWith(".js")),
+      "Built HTML must reference a JavaScript bundle.",
+    );
+    assert.ok(
+      references.some((path) => path?.endsWith(".css")),
+      "Built HTML must reference a CSS bundle.",
+    );
+    for (const path of references) {
+      assert.ok(
+        path && builtAssetPath.test(path),
+        "HTML must reference only hashed Vite JS/CSS assets.",
+      );
+      await assertRegularArtifact(join(clientDirectory, path));
+    }
+  }
+  for (const file of [
+    "manifest.webmanifest",
+    "icons/toki.svg",
+    "icons/toki-maskable.svg",
+    "icons/toki-180.png",
+    "icons/toki-192.png",
+    "icons/toki-512.png",
+    "icons/toki-maskable-512.png",
+  ]) {
+    await assertRegularArtifact(join(clientDirectory, file));
+  }
   return true;
 }
 
@@ -97,6 +208,7 @@ export async function writeProductionConfig(mode, databaseId) {
   const confirmedDatabaseId = config.d1_databases[0]?.database_id;
   assert.ok(confirmedDatabaseId);
   assertProductionConfig(config, mode, confirmedDatabaseId);
+  await assertBuiltArtifacts();
   await ensurePrivateTemporaryRoot();
 
   const path = productionConfigPath(mode);

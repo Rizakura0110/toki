@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertBuiltArtifacts } from "./prepare-production-config.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const wrangler = fileURLToPath(
@@ -13,6 +14,8 @@ if (mode !== "open" && mode !== "closed") {
 }
 
 const port = mode === "open" ? 8791 : 8792;
+const buildConfig = join(root, "dist/toki/wrangler.json");
+await assertBuiltArtifacts();
 const tmpRoot = join(root, ".tmp");
 await mkdir(tmpRoot, { recursive: true });
 // Give each run its own D1 so simultaneous checks cannot delete each other's data.
@@ -23,6 +26,16 @@ const localEnv = {
   CI: "true",
   WRANGLER_SEND_METRICS: "false",
 };
+// Local smoke tests never inherit production credentials or identity settings.
+for (const key of [
+  "CLOUDFLARE_API_TOKEN",
+  "CLOUDFLARE_ACCOUNT_ID",
+  "ALLOWED_EMAIL",
+  "TEAM_DOMAIN",
+  "POLICY_AUD",
+]) {
+  delete localEnv[key];
+}
 
 function command(args) {
   const child = spawn(process.execPath, [wrangler, ...args], {
@@ -41,11 +54,23 @@ function command(args) {
 
 try {
   if (mode === "open") {
-    await command(["d1", "migrations", "apply", "DB", "--local", "--persist-to", persistence]);
+    await command([
+      "d1",
+      "migrations",
+      "apply",
+      "DB",
+      "--config",
+      buildConfig,
+      "--local",
+      "--persist-to",
+      persistence,
+    ]);
   }
 
   const args = [
     "dev",
+    "--config",
+    buildConfig,
     "--local",
     "--ip",
     "127.0.0.1",

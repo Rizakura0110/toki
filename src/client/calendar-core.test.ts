@@ -12,7 +12,7 @@ import {
   tokyoDateKey,
   weekRange,
   weekStart,
-} from "../../public/calendar-core.js";
+} from "./calendar-core.js";
 
 const hour = 60 * 60 * 1_000;
 

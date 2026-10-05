@@ -4,7 +4,7 @@ import {
   dayRange,
   parseTokyoDateTimeInput,
   tokyoDateKey,
-} from "../../public/calendar-core.js";
+} from "../../src/client/calendar-core.js";
 
 const ORIGIN = "http://127.0.0.1:8791";
 const CLOSED_ORIGIN = "http://127.0.0.1:8792";

@@ -11,7 +11,8 @@
 - 2026-10-04の所有者指示により、Tokiも基盤・Tech Inbox・Daymarkと技術を揃える。目標はTypeScript、React/React DOM・React Router、Tailwind CSS・Vite（React/Tailwind/Cloudflare plugins）、Hono、Drizzle ORM/D1。Zod・jose/Cloudflare Access、Node.js/pnpm・Wrangler・Biome・Vitest/Testing Library・Playwright・GitHub Actionsも共通基準に揃える。
 - 別repository・別Worker・別D1・別Accessと入口リンクの境界は維持し、基盤や他製品の実装をimportしない。既存の素のJavaScript・独自router・直接SQLは移行元であり、新製品用の標準ではない。
 - 基盤の検証済み完全versionと依存基準を出発点とし、導入前に脆弱性・互換性・7日gate・integrityを再確認する。独断で別技術へ置換・省略しない。例外が必要なら理由と比較案を提示し、所有者の承認を得る。
-- 移行は基盤repositoryの`docs/toki-roadmap.md` Phase 49〜56に従う。Phase 50で現行動作の比較テストと依存確認に着手した。React/Vite・Hono・Drizzleへの置換と本番変更は後続フェーズで行う。既存の機能、API、記録と未完了計測、URL、PWA identityを保ち、物理DB schema/migration変更は前提にしない。
+- 移行は基盤repositoryの`docs/toki-roadmap.md` Phase 49〜56に従う。Phase 51はViteとReact/Tailwindの開発基盤で、現行HTML/DOM画面を保持する。Hono・Drizzle・React画面への置換は順にPhase 52〜54、本番変更は別承認後のPhase 56。既存の機能、API、記録と未完了計測、URL、PWA identityを保ち、物理DB schema/migration変更は前提にしない。
+- ローカルDBの保存先はmigration・検査・開発起動で同じ`.wrangler/state`へ明示固定する。Viteの`dist`配下へ永続データを置かない。開発/E2Eもbuild済みWorkerとassetsを配信し、HMRのために本番CSP・認証を緩めない。
 
 ## Cloudflare認証の誤診を繰り返さないための必須手順
 

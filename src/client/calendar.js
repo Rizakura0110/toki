@@ -1,3 +1,4 @@
+// Legacy screen retained until Phase 54; Vite owns delivery, not calendar behavior.
 import {
   TIMELINE_HOUR_HEIGHT,
   addDays,

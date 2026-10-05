@@ -791,3 +791,4 @@ textarea::placeholder {
     transition: none;
   }
 }
+/* Preserve the existing screen styles until Phase 54. */

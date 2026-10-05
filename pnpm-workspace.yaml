@@ -8,6 +8,7 @@ overrides:
   'rolldown@': 1.2.4
   'miniflare@5.20260815.0-alpha>sharp': 0.35.4
   'miniflare@5.20260815.0-alpha>undici': 7.29.1
+  'jsdom@30.0.1>undici': 8.10.2
 
 storeDir: .pnpm-store
 cacheDir: .cache/pnpm

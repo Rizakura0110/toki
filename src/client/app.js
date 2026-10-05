@@ -1,4 +1,4 @@
-// The server owns session timestamps and state. This module only animates their presentation.
+// Legacy screen retained until Phase 54. The server owns session timestamps and state.
 
 /** @typedef {"stopwatch" | "timer"} SessionMode */
 /** @typedef {"running" | "awaiting_description" | "saved" | "discarded"} SessionStatus */

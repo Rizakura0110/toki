@@ -287,3 +287,4 @@ export function layoutDayRecords(records, dateKey) {
 
   return entries.map(({ originalIndex: _originalIndex, lane: _lane, ...entry }) => entry);
 }
+// Shared calendar arithmetic remains unchanged during the build migration.

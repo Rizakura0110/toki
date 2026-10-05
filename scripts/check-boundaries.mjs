@@ -15,6 +15,8 @@ function sourceFiles(directory) {
 const checkedFiles = [
   ...sourceFiles(sourceDir),
   ...sourceFiles(join(repositoryRoot, "public")),
+  join(repositoryRoot, "index.html"),
+  join(repositoryRoot, "calendar.html"),
   join(repositoryRoot, "package.json"),
 ];
 
@@ -37,7 +39,7 @@ if (wrangler.workers_dev !== false || wrangler.preview_urls !== false) {
   throw new Error("Phase 36 Worker must have no public workers.dev or preview URL.");
 }
 if (
-  wrangler.assets?.directory !== "./public" ||
+  wrangler.assets?.directory !== undefined ||
   wrangler.assets?.binding !== "ASSETS" ||
   wrangler.assets?.html_handling !== "none" ||
   wrangler.assets?.run_worker_first !== true ||

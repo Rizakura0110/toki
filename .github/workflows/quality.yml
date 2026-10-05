@@ -40,7 +40,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install and run quality gates
+      - name: Install, build Vite artifacts, and run quality gates
         shell: bash
         run: |
           set -euo pipefail

@@ -24,12 +24,7 @@ const RESPONSE_HEADERS = {
 const STATIC_PATHS = new Set([
   "/",
   "/index.html",
-  "/app.js",
-  "/styles.css",
   "/calendar.html",
-  "/calendar.js",
-  "/calendar.css",
-  "/calendar-core.js",
   "/manifest.webmanifest",
   "/icons/toki.svg",
   "/icons/toki-maskable.svg",
@@ -38,6 +33,10 @@ const STATIC_PATHS = new Set([
   "/icons/toki-512.png",
   "/icons/toki-maskable-512.png",
 ]);
+// Match only the one-level, eight-character-hashed JS/CSS outputs configured
+// by Vite. Source files, source maps, manifests and internal build files are
+// never exposed through a broad /assets/* or SPA fallback route.
+const BUILT_ASSET_PATH = /^\/assets\/[A-Za-z0-9_-]+-[A-Za-z0-9_-]{8}\.(?:js|css)$/u;
 const STATIC_SECURITY_HEADERS = {
   "Cache-Control": "no-store",
   "Content-Security-Policy":
@@ -67,7 +66,7 @@ async function handleStatic(request: Request, bindings: LocalBindings): Promise<
     return new Response("Unavailable", { status, headers: RESPONSE_HEADERS });
   }
   const url = new URL(request.url);
-  if (!STATIC_PATHS.has(url.pathname)) {
+  if (!STATIC_PATHS.has(url.pathname) && !BUILT_ASSET_PATH.test(url.pathname)) {
     return new Response("Not found", { status: 404, headers: RESPONSE_HEADERS });
   }
   if (bindings.ASSETS === undefined) return unavailable();

@@ -12,7 +12,7 @@ Phase 47では、短時間の記録でも内容が1行見えるように、カ�
 
 Phase 48では、手動の新規登録フォームを分単位（秒は00）にし、内容を任意にしました。手動・ストップウォッチ・タイマーの保存と記録編集で空欄/空白だけを受け付け、保存時に「無題」で補完するため、カレンダーと記録一覧にも「無題」が表示されます。既存記録の編集は引き続き秒単位で、内容だけの編集では元の秒・ミリ秒を保持します。2026-09-27に所有者の承認後、検証済みcommit `bab03ef`をToki Workerへ本番反映しました。認証済みブラウザで分単位・内容任意の手動登録フォームと計測画面を確認し、未認証10経路のAccess保護も検証済みです。DB schema/migration・記録の更新・進行中の計測・認証/料金設定は変更していません。空欄保存と再読み込み後の保持はローカルE2Eで検証し、本番では確認用の記録を保存していません。
 
-2026-10-04に、基盤・Tech Inbox・Daymarkと技術スタックを揃える方針とPhase 49〜56の移行手順を記録しました。React/React Router・Tailwind CSS/Vite・Hono・Drizzle ORMへ移行する計画で、独立repository/Worker/D1、現在の機能・URL・記録・PWAを維持します。Phase 50では移行前の回帰テストと合成データを追加し、依存を再確認しました。画面・APIの実装や物理DBはまだ置換せず、本番も変更していません。
+2026-10-04に、基盤・Tech Inbox・Daymarkと技術スタックを揃える方針とPhase 49〜56の移行手順を記録しました。Phase 50では移行前の回帰テストと合成データを追加しました。Phase 51では既存のHTML/DOM画面をViteでbuildする構成とReact/Tailwindの開発基盤を導入しました。画面のReact置換はPhase 54、APIのHono化はPhase 52、DBのDrizzle化はPhase 53で行います。独立repository/Worker/D1、機能・URL・記録・PWAを維持し、本番は変更していません。
 
 製品仕様とフェーズ計画は基盤repositoryの`docs/toki-design.md`・`docs/toki-roadmap.md`を正とします。このrepositoryへ基盤/Tech Inbox/Daymarkのsourceをコピーしたり、実データやCloudflare資格情報を追加したりしません。
 
@@ -26,9 +26,19 @@ PLAYWRIGHT_BROWSERS_PATH="$PWD/.cache/ms-playwright" pnpm exec playwright instal
 pnpm check
 ```
 
-`pnpm check`はformat、lint、生成型、TypeScript、coverage付きtest、local D1 migrationと`time_sessions`検査、Worker dry-run build、ローカルChromium E2E、依存監査を実行します。E2Eは毎回専用の一時D1を使い、認証バイパスあり・なしの2つのloopback Workerを検証します。Cloudflareのremote DBやWorkerは作成・変更しません。
+`pnpm check`はformat、lint、生成型、browser/Worker/test/Node別のTypeScript、coverage付きtest、local D1 migrationと`time_sessions`検査、Vite build・成果物検査・Worker dry-run、ローカルChromium E2E、依存監査を実行します。E2Eはbuild済みWorkerとassetsを使い、毎回専用の一時D1、認証バイパスあり・なしの2つのloopback Workerを検証します。Cloudflareのremote DBやWorkerは作成・変更しません。GitHub Actionsも同じgateを使い、deployは行いません。
 
-必要な場合に限り、`pnpm dev`でローカルWorkerを起動できます。`/__local/db`と画面/APIの認証バイパスは明示的なローカル起動引数かつloopback HTTPに限定します。`.dev.vars`や`.env`は追跡しません。本番では画面/APIとも本人限定Accessに加えてWorkerでJWTを検証します。
+必要な場合に限り、`pnpm dev`でbuild後のローカルWorkerを起動できます。Phase 51では本番と同じCSP・認証経路を検証するため、Vite HMRではなくbuild済み成果物を配信します。source編集後は停止・再実行してください。migration・検査・起動のローカルDB保存先をrepository内の`.wrangler/state`へ固定し、再buildで消される`dist`の中には保存しません。`/__local/db`と画面/APIの認証バイパスは明示的なローカル起動引数かつloopback HTTPに限定します。`.dev.vars`や`.env`は追跡しません。本番では画面/APIとも本人限定Accessに加えてWorkerでJWTを検証します。
+
+### Phase 51の開発基盤
+
+rootの`index.html`・`calendar.html`から、`src/client/`のTypeScript entrypointと既存JavaScript/CSSを読み込みます。ViteのReact/Tailwind/Cloudflare pluginsが`dist/client/`と`dist/toki/`を生成します。`public/`には変更しないmanifestとアイコンだけを残します。React/Router/Testing Library/jsdomの接続も単体テストで検証しますが、Reactを既存DOMへ重ねてmountすることはありません。
+
+見た目を保つため、Tailwindの[Preflight](https://tailwindcss.com/docs/preflight)と既存HTMLの自動class走査はまだ有効にしません。Reactへの画面置換時に必要なutilityを明示します。ビルド済みJS/CSSは8文字hash付きpathに限定し、すべてWorkerの認証を通します。未知URL・欠落asset・source・source mapをHTMLへfallbackしません。PWA identityと旧HTML URLは維持し、Service Workerは追加しません。
+
+依存は基盤の確認済み完全版へ揃え、jsdom配下Undiciは修正版`8.10.2`に固定しました。7日gate・strict peer・integrity・install script制限を保ち、Drizzle Kitはこの段階では導入しません。詳細は基盤の`docs/dependency-baseline.md`を参照してください。
+
+Phase 51の全品質gateは16 files/332 tests、PC/320pxブラウザ16件、audit指摘0件で成功しました。成果物の配信制限と、ローカルDBの保存先を再buildで消えない場所へ固定するテストも含みます。本番反映・iPhone実機の再確認は行っていません。
 
 ### Phase 50の移行比較テスト
 
@@ -38,15 +48,16 @@ pnpm check
 
 Phase 50の全品質検証は単体/統合246件・ブラウザ16件が成功し、依存修正後のauditは指摘0件でした。これはローカル検証であり、本番反映やiPhone実機の再確認は行っていません。
 
-依存再監査で開発用Miniflare配下のUndiciにhighの指摘が見つかったため、親versionを限定して`undici 7.29.0 → 7.29.1`だけを更新しました。7日gate・integrity・install script制限を維持し、直接依存は不変です。[Undici公式advisory](https://github.com/nodejs/undici/security/advisories/GHSA-rfgv-xxqx-mfg5)を参照してください。移行先の固定版・追加の修正候補と段階構成は、基盤repositoryの`docs/dependency-baseline.md`・`docs/toki-roadmap.md`に記録します。新スタックの実際のinstall/buildはPhase 51以降で検証します。
+依存再監査で開発用Miniflare配下のUndiciにhighの指摘が見つかったため、Phase 50では親versionを限定して`undici 7.29.0 → 7.29.1`だけを更新しました。その時点では直接依存を変更していません。[Undici公式advisory](https://github.com/nodejs/undici/security/advisories/GHSA-rfgv-xxqx-mfg5)を参照してください。移行先の固定版と導入結果は、基盤repositoryの`docs/dependency-baseline.md`・`docs/toki-roadmap.md`に記録します。
 
 ## 本番設定の事前準備（Cloudflareへの変更なし）
 
 追跡している`wrangler.jsonc`はローカル専用で、そのまま本番へdeployしません。Phase 43で所有者が専用D1の名前`toki`とハイフン付きの正式なdatabase UUID（8-4-4-4-12桁）を確認した後、IDを`TOKI_D1_DATABASE_ID`環境変数へ設定し、明示的な公開段階を選んで次を実行します。Account IDのような32桁の値は受け付けません。IDや認証値をCLI引数・Git・ログへ書かないでください。
 
-以下は準備用のローカル操作で、Cloudflareへの作成・migration・deployを実行しません。生成設定を使ったremote操作には、実際のアカウントのFreeプランと使用量、専用D1の存在とID、所有者の本番操作承認が必要です。`stage`による非公開Workerの配置はAccess作成より先に行い、Workerの不変IDを確認します。`live`による公開だけは、本人限定AccessとWorker secretの検証が完了するまで行いません。
+以下は準備用のローカル操作で、Cloudflareへの作成・migration・deployを実行しません。Phase 51以降の設定生成はbuild済み`dist/toki/index.js`と`dist/client`の存在・安全な設定・参照assetを検査し、sourceや`public`へのfallbackを拒否します。生成設定は`no_bundle:true`で検証済み成果物を参照します。remote操作にはFreeプランと使用量、専用D1の存在とID、所有者の本番操作承認が必要です。初回公開時の`stage`はAccess作成より先に行い、Workerの不変IDを確認します。`live`による公開だけは、本人限定AccessとWorker secretの検証が完了するまで行いません。
 
 ```sh
+pnpm build
 pnpm production:config:stage
 pnpm exec wrangler deploy --dry-run --config .tmp/toki-production-stage.jsonc --outdir .tmp/toki-production-stage-build
 ```

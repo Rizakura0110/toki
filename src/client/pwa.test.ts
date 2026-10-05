@@ -41,7 +41,7 @@ describe("Toki's separate PWA identity", () => {
   });
 
   it.each(["index.html", "calendar.html"])("links the same PWA from %s", (name) => {
-    const html = readFileSync(publicFile(name), "utf8");
+    const html = readFileSync(new URL(`../../${name}`, import.meta.url), "utf8");
     expect(html).toContain(
       'rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials"',
     );

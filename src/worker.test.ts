@@ -116,9 +116,14 @@ describe("Phase 38 static screen perimeter", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("also protects the calendar document and its browser modules", async () => {
+  it("also protects the calendar document and its built browser modules", async () => {
     const fetch = vi.fn(async () => new Response("private calendar"));
-    for (const path of ["calendar.html", "calendar.js", "calendar.css", "calendar-core.js"]) {
+    for (const path of [
+      "calendar.html",
+      "assets/calendar-Abcd_123.js",
+      "assets/calendar-Zyxw-987.css",
+      "assets/calendar-core-aB1_cD-2.js",
+    ]) {
       const response = await handleRequest(new Request(`https://toki.example/${path}`), {
         ASSETS: { fetch },
       });
@@ -168,14 +173,20 @@ describe("Phase 38 static screen perimeter", () => {
 
   it("never applies the loopback bypass to a remote or HTTPS origin", async () => {
     const fetch = vi.fn(async () => new Response("secret"));
-    const remote = await handleRequest(new Request("https://toki.example/app.js"), {
-      LOCAL_AUTH_BYPASS: "enabled",
-      ASSETS: { fetch },
-    });
-    const httpsLocal = await handleRequest(new Request("https://localhost/app.js"), {
-      LOCAL_AUTH_BYPASS: "enabled",
-      ASSETS: { fetch },
-    });
+    const remote = await handleRequest(
+      new Request("https://toki.example/assets/index-Abcd1234.js"),
+      {
+        LOCAL_AUTH_BYPASS: "enabled",
+        ASSETS: { fetch },
+      },
+    );
+    const httpsLocal = await handleRequest(
+      new Request("https://localhost/assets/index-Abcd1234.js"),
+      {
+        LOCAL_AUTH_BYPASS: "enabled",
+        ASSETS: { fetch },
+      },
+    );
     expect([remote.status, httpsLocal.status]).toEqual([403, 403]);
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -198,5 +209,103 @@ describe("Phase 38 static screen perimeter", () => {
     const api = await handleRequest(new Request(`${localPage}api/v1/session`), bindings);
     expect([mutation.status, api.status]).toEqual([405, 503]);
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("Phase 51 built asset perimeter", () => {
+  const localOrigin = "http://127.0.0.1:8787";
+
+  it.each([
+    "/assets/index-Abcd1234.js",
+    "/assets/calendar-ZyXw_987.js",
+    "/assets/calendar-core-aB1_cD-2.js",
+    "/assets/styles-Zyxw-987.css",
+  ])("serves the hashed output %s only after authorization", async (path) => {
+    const fetch = vi.fn(async () => new Response("built asset"));
+    const denied = await handleRequest(new Request(`https://toki.example${path}`), {
+      ASSETS: { fetch },
+    });
+    expect(denied.status).toBe(403);
+    expect(fetch).not.toHaveBeenCalled();
+
+    for (const method of ["GET", "HEAD"]) {
+      const allowed = await handleRequest(new Request(`${localOrigin}${path}`, { method }), {
+        LOCAL_AUTH_BYPASS: "enabled",
+        ASSETS: { fetch },
+      });
+      expect(allowed.status).toBe(200);
+      expect(allowed.headers.get("Cache-Control")).toBe("no-store");
+      expect(allowed.headers.get("Content-Security-Policy")).toBe(
+        "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; manifest-src 'self'; worker-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+      );
+      expect(fetch).toHaveBeenLastCalledWith(
+        expect.objectContaining({ url: `${localOrigin}${path}`, method }),
+      );
+    }
+  });
+
+  it.each([
+    "/app.js",
+    "/styles.css",
+    "/calendar.js",
+    "/calendar.css",
+    "/calendar-core.js",
+    "/src/client/app.js",
+    "/src/worker.ts",
+    "/assets/index.js",
+    "/assets/index-Abcd123.js",
+    "/assets/index-Abcd12345.js",
+    "/assets/index-Abcd1234.js.map",
+    "/assets/index.Abcd1234.js",
+    "/assets/index-Abcd1234.json",
+    "/assets/nested/index-Abcd1234.js",
+    "/assets/.private-Abcd1234.js",
+    "/assets/%69ndex-Abcd1234.js",
+    "/assets/index-Abcd1234%2Ejs",
+    "/.vite/manifest.json",
+    "/wrangler.jsonc",
+    "/worker-configuration.d.ts",
+    "/__vite_ping",
+    "/@vite/client",
+    "/@react-refresh",
+    "/@fs/private.js",
+    "/unknown-page",
+  ])("does not expose a source/internal/non-output path %s", async (path) => {
+    const fetch = vi.fn(async () => new Response("must not be reached"));
+    const denied = await handleRequest(new Request(`https://toki.example${path}`), {
+      ASSETS: { fetch },
+    });
+    expect(denied.status).toBe(403);
+    const missing = await handleRequest(new Request(`${localOrigin}${path}`), {
+      LOCAL_AUTH_BYPASS: "enabled",
+      ASSETS: { fetch },
+    });
+    expect(missing.status).toBe(404);
+    expect(await missing.text()).toBe("Not found");
+    expect(missing.headers.get("Cache-Control")).toBe("no-store");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not turn a missing hashed output into an HTML fallback", async () => {
+    const fetch = vi.fn(async () => new Response("asset is missing", { status: 404 }));
+    const response = await handleRequest(new Request(`${localOrigin}/assets/missing-Abcd1234.js`), {
+      LOCAL_AUTH_BYPASS: "enabled",
+      ASSETS: { fetch },
+    });
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe("Not found");
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it("fails closed without exposing an asset binding failure", async () => {
+    const fetch = vi.fn(async () => {
+      throw new Error("private asset internals");
+    });
+    const response = await handleRequest(new Request(`${localOrigin}/assets/index-Abcd1234.js`), {
+      LOCAL_AUTH_BYPASS: "enabled",
+      ASSETS: { fetch },
+    });
+    expect(response.status).toBe(503);
+    expect(await response.text()).toBe("Unavailable");
   });
 });
