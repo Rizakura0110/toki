@@ -309,3 +309,141 @@ describe("Phase 51 built asset perimeter", () => {
     expect(await response.text()).toBe("Unavailable");
   });
 });
+
+describe("Phase 52 Hono routing compatibility", () => {
+  const localOrigin = "http://127.0.0.1:8787";
+
+  it.each(["/api/v1", "/api/v1-other/session", "/api%2Fv1/session", "/api/v%31/session"])(
+    "keeps non-API prefix %s inside the authenticated static perimeter",
+    async (path) => {
+      const fetch = vi.fn(async () => new Response("must not be reached"));
+      const denied = await handleRequest(new Request(`https://toki.example${path}`), {
+        ASSETS: { fetch },
+      });
+      expect(denied.status).toBe(403);
+      expect(await denied.text()).toBe("Unavailable");
+      const missing = await handleRequest(new Request(`${localOrigin}${path}`), {
+        LOCAL_AUTH_BYPASS: "enabled",
+        ASSETS: { fetch },
+      });
+      expect(missing.status).toBe(404);
+      expect(await missing.text()).toBe("Not found");
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["/api/v1/", "/api/v1/unknown", "/api/v1/session/"])(
+    "keeps %s in the API authentication and database gate",
+    async (path) => {
+      const fetch = vi.fn(async () => new Response("must not be reached"));
+      const response = await handleRequest(new Request(`${localOrigin}${path}`), {
+        LOCAL_AUTH_BYPASS: "enabled",
+        ASSETS: { fetch },
+      });
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ error: { code: "UNAVAILABLE" } });
+      expect(response.headers.get("Content-Type")).toBe("application/json; charset=utf-8");
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["/__local/db/", "/__local/%64b", "/__local/db/extra"])(
+    "does not expose a probe through non-exact path %s",
+    async (path) => {
+      const { env, prepare } = bindings();
+      const response = await handleRequest(new Request(`${localOrigin}${path}`), {
+        ...env,
+        LOCAL_AUTH_BYPASS: "enabled",
+      });
+      expect(response.status).toBe(404);
+      expect(await response.text()).toBe("Not found");
+      expect(prepare).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not run the database probe for HEAD despite Hono's GET dispatch", async () => {
+    const { env, prepare } = bindings();
+    const response = await handleRequest(new Request(LOCAL_URL, { method: "HEAD" }), env);
+    expect(response.status).toBe(503);
+    expect(await response.text()).toBe("");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
+  it("preserves the static method-before-auth and auth-before-path order", async () => {
+    const fetch = vi.fn(async () => new Response("must not be reached"));
+    const post = await handleRequest(
+      new Request("https://toki.example/unknown", { method: "POST" }),
+      { ASSETS: { fetch } },
+    );
+    const get = await handleRequest(new Request("https://toki.example/unknown"), {
+      ASSETS: { fetch },
+    });
+    expect(post.status).toBe(405);
+    expect(await post.text()).toBe("Method not allowed");
+    expect(get.status).toBe(403);
+    expect(await get.text()).toBe("Unavailable");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each(["/", "/calendar.html", "/assets/index-Abcd1234.js"])(
+    "retains the original HEAD method and security headers when serving %s",
+    async (path) => {
+      const fetch = vi.fn(
+        async () => new Response("asset body", { headers: { "Content-Type": "text/html" } }),
+      );
+      const response = await handleRequest(
+        new Request(`${localOrigin}${path}`, { method: "HEAD" }),
+        {
+          LOCAL_AUTH_BYPASS: "enabled",
+          ASSETS: { fetch },
+        },
+      );
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe("");
+      expect(response.headers.get("Content-Security-Policy")).toContain("script-src 'self'");
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      expect(fetch).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          url: `${localOrigin}${path === "/" ? "/index.html" : path}`,
+          method: "HEAD",
+        }),
+      );
+    },
+  );
+
+  it.each([
+    ["/unknown", 404, "text/plain; charset=utf-8"],
+    ["/api/v1/session", 405, "application/json; charset=utf-8"],
+  ])(
+    "returns a bodyless HEAD response for %s without database access",
+    async (path, status, contentType) => {
+      const { env, prepare } = bindings();
+      const response = await handleRequest(
+        new Request(`${localOrigin}${path}`, { method: "HEAD" }),
+        {
+          ...env,
+          LOCAL_AUTH_BYPASS: "enabled",
+        },
+      );
+      expect(response.status).toBe(status);
+      expect(response.headers.get("Content-Type")).toBe(contentType);
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      expect(await response.text()).toBe("");
+      expect(prepare).not.toHaveBeenCalled();
+    },
+  );
+
+  it("sanitizes unexpected outer-router failures without Hono's default error body", async () => {
+    const response = await handleRequest(new Request(localOrigin), {
+      LOCAL_AUTH_BYPASS: "enabled",
+      get ASSETS(): never {
+        throw new Error("private outer-router failure");
+      },
+    });
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Content-Type")).toBe("text/plain; charset=utf-8");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(await response.text()).toBe("Unavailable");
+  });
+});

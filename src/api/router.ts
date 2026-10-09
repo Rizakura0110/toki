@@ -1,3 +1,4 @@
+import { Hono } from "hono";
 import {
   createRecordSchema,
   deleteRecordSchema,
@@ -32,8 +33,10 @@ const JSON_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
   "X-Content-Type-Options": "nosniff",
 };
-const SESSION_ACTION = /^\/api\/v1\/session\/([0-9a-f-]{36})\/(stop|save|discard)$/u;
-const RECORD_ACTION = /^\/api\/v1\/records\/([0-9a-f-]{36})$/u;
+const SESSION_PATH = "/api/v1/session";
+const RECORDS_PATH = "/api/v1/records";
+const SESSION_ACTION_PATH = "/api/v1/session/:id{[0-9a-f-]{36}}/:action{stop|save|discard}";
+const RECORD_ACTION_PATH = "/api/v1/records/:id{[0-9a-f-]{36}}";
 const MAX_BODY_BYTES = 4096;
 
 function json(status: number, body: unknown): Response {
@@ -78,118 +81,150 @@ function queryInput(url: URL): Record<string, string> | undefined {
   return input;
 }
 
-/** Every route has an independent Worker-side Access gate; only explicit loopback dev can bypass it. */
-export async function handleApiRequest(request: Request, bindings: ApiBindings): Promise<Response> {
+function dataError(cause: unknown): Response {
+  if (cause instanceof TokiDataError) {
+    const status = cause.code === "validation" ? 400 : cause.code === "not_found" ? 404 : 409;
+    return error(status, cause.code.toUpperCase());
+  }
+  return error(500, "INTERNAL_ERROR");
+}
+
+type ApiEnvironment = {
+  Bindings: ApiBindings;
+  Variables: { db: D1Database; nowMs: number; url: URL; recordId: string };
+};
+
+const api = new Hono<ApiEnvironment>({
+  strict: true,
+  // Do not decode encoded IDs or normalize trailing slashes into valid routes.
+  getPath: (request) => new URL(request.url).pathname,
+});
+
+api.notFound(() => error(404, "NOT_FOUND"));
+api.onError(dataError);
+
+// These guards also run for unknown routes; keep their existing rejection order.
+api.use("*", async (context, next) => {
+  const request = context.req.raw;
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/api/v1/")) return error(404, "NOT_FOUND");
-
   try {
-    await authorizeRequest(request, bindings);
+    await authorizeRequest(request, context.env);
   } catch (cause) {
     if (cause instanceof AccessAuthError) return error(cause.status, cause.code);
     return error(401, "UNAUTHORIZED");
   }
-
-  const db = bindings.DB;
+  const db = context.env.DB;
   if (db === undefined) return error(503, "UNAVAILABLE");
-
   if (isMutation(request) && !hasSafeMutationHeaders(request, url)) {
     return error(403, "UNSAFE_REQUEST");
   }
-
-  const nowMs = Date.now();
+  context.set("db", db);
+  context.set("url", url);
+  context.set("nowMs", Date.now());
   try {
-    if (url.pathname === "/api/v1/session") {
-      if (request.method === "GET") {
-        if (url.search !== "") return error(400, "INVALID_QUERY");
-        const session = await getCurrentSession(db, nowMs);
-        return json(200, { session, serverNowMs: nowMs });
-      }
-      if (request.method === "POST") {
-        if (url.search !== "") return error(400, "INVALID_QUERY");
-        const parsed = startSessionSchema.safeParse(await parseJson(request));
-        if (!parsed.success) return error(400, "INVALID_INPUT");
-        const session = await startSession(db, parsed.data, nowMs);
-        return json(201, { session, serverNowMs: nowMs });
-      }
-      return error(405, "METHOD_NOT_ALLOWED");
-    }
-
-    const sessionAction = SESSION_ACTION.exec(url.pathname);
-    if (sessionAction !== null) {
-      if (request.method !== "POST") return error(405, "METHOD_NOT_ALLOWED");
-      if (url.search !== "") return error(400, "INVALID_QUERY");
-      const id = sessionAction[1];
-      const action = sessionAction[2];
-      if (id === undefined || action === undefined || !sessionIdSchema.safeParse(id).success) {
-        return error(404, "NOT_FOUND");
-      }
-      if (action === "save") {
-        const parsed = saveSessionSchema.safeParse(await parseJson(request));
-        if (!parsed.success) return error(400, "INVALID_INPUT");
-        const session = await saveSession(db, id, parsed.data.description, nowMs);
-        return json(200, { session, serverNowMs: nowMs });
-      }
-      const parsed = await parseJson(request);
-      if (
-        parsed === undefined ||
-        typeof parsed !== "object" ||
-        parsed === null ||
-        Array.isArray(parsed) ||
-        Object.keys(parsed).length !== 0
-      ) {
-        return error(400, "INVALID_INPUT");
-      }
-      const session =
-        action === "stop" ? await stopSession(db, id, nowMs) : await discardSession(db, id, nowMs);
-      return json(200, { session, serverNowMs: nowMs });
-    }
-
-    if (url.pathname === "/api/v1/records") {
-      if (request.method === "GET") {
-        const parsed = recordsQuerySchema.safeParse(queryInput(url));
-        if (!parsed.success) return error(400, "INVALID_QUERY");
-        const records = await listSavedRecords(db, parsed.data.startMs, parsed.data.endMs);
-        return json(200, { records, serverNowMs: nowMs });
-      }
-      if (request.method === "POST") {
-        if (url.search !== "") return error(400, "INVALID_QUERY");
-        const parsed = createRecordSchema.safeParse(await parseJson(request));
-        if (!parsed.success) return error(400, "INVALID_INPUT");
-        const record = await createManualRecord(db, parsed.data, nowMs);
-        return json(201, { record, serverNowMs: nowMs });
-      }
-      return error(405, "METHOD_NOT_ALLOWED");
-    }
-
-    const recordAction = RECORD_ACTION.exec(url.pathname);
-    if (recordAction !== null) {
-      if (url.search !== "") return error(400, "INVALID_QUERY");
-      const id = recordAction[1];
-      if (id === undefined || !recordIdSchema.safeParse(id).success) {
-        return error(404, "NOT_FOUND");
-      }
-      if (request.method === "PATCH") {
-        const parsed = editRecordSchema.safeParse(await parseJson(request));
-        if (!parsed.success) return error(400, "INVALID_INPUT");
-        const record = await editSavedRecord(db, id, parsed.data, nowMs);
-        return json(200, { record, serverNowMs: nowMs });
-      }
-      if (request.method === "DELETE") {
-        const parsed = deleteRecordSchema.safeParse(await parseJson(request));
-        if (!parsed.success) return error(400, "INVALID_INPUT");
-        await deleteSavedRecord(db, id, parsed.data.expectedVersion);
-        return json(200, { deletedRecordId: id, serverNowMs: nowMs });
-      }
-      return error(405, "METHOD_NOT_ALLOWED");
-    }
-
-    return error(404, "NOT_FOUND");
+    await next();
   } catch (cause) {
-    if (cause instanceof TokiDataError) {
-      const status = cause.code === "validation" ? 400 : cause.code === "not_found" ? 404 : 409;
-      return error(status, cause.code.toUpperCase());
-    }
-    return error(500, "INTERNAL_ERROR");
+    // Hono's onError handles Error instances. Preserve sanitization of other thrown values too.
+    return dataError(cause);
   }
+});
+
+api.get(SESSION_PATH, async (context) => {
+  // Hono routes HEAD through GET. It must not resolve an expired timer or query D1.
+  if (context.req.raw.method === "HEAD") return error(405, "METHOD_NOT_ALLOWED");
+  if (context.get("url").search !== "") return error(400, "INVALID_QUERY");
+  const nowMs = context.get("nowMs");
+  const session = await getCurrentSession(context.get("db"), nowMs);
+  return json(200, { session, serverNowMs: nowMs });
+});
+api.post(SESSION_PATH, async (context) => {
+  if (context.get("url").search !== "") return error(400, "INVALID_QUERY");
+  const parsed = startSessionSchema.safeParse(await parseJson(context.req.raw));
+  if (!parsed.success) return error(400, "INVALID_INPUT");
+  const nowMs = context.get("nowMs");
+  const session = await startSession(context.get("db"), parsed.data, nowMs);
+  return json(201, { session, serverNowMs: nowMs });
+});
+api.all(SESSION_PATH, () => error(405, "METHOD_NOT_ALLOWED"));
+
+api.post(SESSION_ACTION_PATH, async (context) => {
+  if (context.get("url").search !== "") return error(400, "INVALID_QUERY");
+  const id = context.req.param("id");
+  const action = context.req.param("action");
+  if (!sessionIdSchema.safeParse(id).success) return error(404, "NOT_FOUND");
+  const db = context.get("db");
+  const nowMs = context.get("nowMs");
+  if (action === "save") {
+    const parsed = saveSessionSchema.safeParse(await parseJson(context.req.raw));
+    if (!parsed.success) return error(400, "INVALID_INPUT");
+    const session = await saveSession(db, id, parsed.data.description, nowMs);
+    return json(200, { session, serverNowMs: nowMs });
+  }
+  const parsed = await parseJson(context.req.raw);
+  if (
+    parsed === undefined ||
+    typeof parsed !== "object" ||
+    parsed === null ||
+    Array.isArray(parsed) ||
+    Object.keys(parsed).length !== 0
+  ) {
+    return error(400, "INVALID_INPUT");
+  }
+  const session =
+    action === "stop" ? await stopSession(db, id, nowMs) : await discardSession(db, id, nowMs);
+  return json(200, { session, serverNowMs: nowMs });
+});
+// Session actions historically check method before query and UUID validity.
+api.all(SESSION_ACTION_PATH, () => error(405, "METHOD_NOT_ALLOWED"));
+
+api.get(RECORDS_PATH, async (context) => {
+  if (context.req.raw.method === "HEAD") return error(405, "METHOD_NOT_ALLOWED");
+  const parsed = recordsQuerySchema.safeParse(queryInput(context.get("url")));
+  if (!parsed.success) return error(400, "INVALID_QUERY");
+  const records = await listSavedRecords(context.get("db"), parsed.data.startMs, parsed.data.endMs);
+  return json(200, { records, serverNowMs: context.get("nowMs") });
+});
+api.post(RECORDS_PATH, async (context) => {
+  if (context.get("url").search !== "") return error(400, "INVALID_QUERY");
+  const parsed = createRecordSchema.safeParse(await parseJson(context.req.raw));
+  if (!parsed.success) return error(400, "INVALID_INPUT");
+  const nowMs = context.get("nowMs");
+  const record = await createManualRecord(context.get("db"), parsed.data, nowMs);
+  return json(201, { record, serverNowMs: nowMs });
+});
+api.all(RECORDS_PATH, () => error(405, "METHOD_NOT_ALLOWED"));
+
+// Record actions historically check query and UUID validity before method.
+api.use(RECORD_ACTION_PATH, async (context, next) => {
+  if (context.get("url").search !== "") return error(400, "INVALID_QUERY");
+  const id = context.req.param("id");
+  if (!recordIdSchema.safeParse(id).success) return error(404, "NOT_FOUND");
+  context.set("recordId", id);
+  await next();
+});
+api.patch(RECORD_ACTION_PATH, async (context) => {
+  const parsed = editRecordSchema.safeParse(await parseJson(context.req.raw));
+  if (!parsed.success) return error(400, "INVALID_INPUT");
+  const nowMs = context.get("nowMs");
+  const record = await editSavedRecord(
+    context.get("db"),
+    context.get("recordId"),
+    parsed.data,
+    nowMs,
+  );
+  return json(200, { record, serverNowMs: nowMs });
+});
+api.delete(RECORD_ACTION_PATH, async (context) => {
+  const parsed = deleteRecordSchema.safeParse(await parseJson(context.req.raw));
+  if (!parsed.success) return error(400, "INVALID_INPUT");
+  const id = context.get("recordId");
+  await deleteSavedRecord(context.get("db"), id, parsed.data.expectedVersion);
+  return json(200, { deletedRecordId: id, serverNowMs: context.get("nowMs") });
+});
+api.all(RECORD_ACTION_PATH, () => error(405, "METHOD_NOT_ALLOWED"));
+
+/** Each API request passes the Worker-side gate, including unknown paths and methods. */
+export async function handleApiRequest(request: Request, bindings: ApiBindings): Promise<Response> {
+  return api.fetch(request, bindings);
 }

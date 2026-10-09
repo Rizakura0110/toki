@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { type APIRequestContext, expect, type Page, test } from "@playwright/test";
 
 const ORIGIN = "http://127.0.0.1:8791";
 const CLOSED_ORIGIN = "http://127.0.0.1:8792";
@@ -249,4 +249,43 @@ test("legacy documents protect built hashed assets and source or unknown URLs st
   expect(head.headers()["cache-control"]).toBe("no-store");
   expect(head.headers()["content-type"]).toBe("application/json; charset=utf-8");
   expect(await head.body()).toHaveLength(0);
+});
+
+test("HTTP routing preserves JSON errors, exact paths and explicit HEAD rejection", async ({
+  request,
+}) => {
+  const id = "123e4567-e89b-42d3-a456-426614174000";
+  const invalidId = "------------------------------------";
+  for (const [path, method, status, code] of [
+    ["/api/v1/session", "HEAD", 405, "METHOD_NOT_ALLOWED"],
+    ["/api/v1/records?startMs=1&endMs=2", "HEAD", 405, "METHOD_NOT_ALLOWED"],
+    [`/api/v1/session/${invalidId}/stop?extra=1`, "GET", 405, "METHOD_NOT_ALLOWED"],
+    [`/api/v1/session/${invalidId}/stop?extra=1`, "POST", 400, "INVALID_QUERY"],
+    [`/api/v1/records/${invalidId}?extra=1`, "GET", 400, "INVALID_QUERY"],
+    [`/api/v1/records/${invalidId}`, "GET", 404, "NOT_FOUND"],
+    [`/api/v1/records/${id}?extra=1`, "HEAD", 400, "INVALID_QUERY"],
+    [`/api/v1/session/%31${id.slice(1)}/stop`, "POST", 404, "NOT_FOUND"],
+    [`/api/v1/records/${id.toUpperCase()}`, "PATCH", 404, "NOT_FOUND"],
+    ["/api/v1/session/", "GET", 404, "NOT_FOUND"],
+    ["/api/v1/Session", "GET", 404, "NOT_FOUND"],
+    ["/api/v1/unknown", "POST", 404, "NOT_FOUND"],
+  ] as const) {
+    const response = await request.fetch(path, {
+      method,
+      headers: { ...WRITE_HEADERS, "Content-Type": "application/json" },
+    });
+    expect(response.status(), `${method} ${path}`).toBe(status);
+    expect(response.headers()["content-type"]).toBe("application/json; charset=utf-8");
+    expect(response.headers()["cache-control"]).toBe("no-store");
+    expect(response.headers()["x-content-type-options"]).toBe("nosniff");
+    expect(response.headers().allow).toBeUndefined();
+    if (method === "HEAD") expect(await response.body()).toHaveLength(0);
+    else expect(await response.json()).toEqual({ error: { code } });
+  }
+  const unsafeUnknown = await request.post("/api/v1/unknown");
+  expect(unsafeUnknown.status()).toBe(403);
+  expect(await unsafeUnknown.json()).toEqual({ error: { code: "UNSAFE_REQUEST" } });
+  const unauthorizedUnknown = await request.post(`${CLOSED_ORIGIN}/api/v1/unknown`);
+  expect(unauthorizedUnknown.status()).toBe(403);
+  expect(await unauthorizedUnknown.json()).toEqual({ error: { code: "FORBIDDEN" } });
 });

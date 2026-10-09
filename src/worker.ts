@@ -1,3 +1,4 @@
+import { Hono } from "hono";
 import { handleApiRequest, type ApiBindings } from "./api/router";
 import { AccessAuthError } from "./security/access";
 import { authorizeRequest } from "./security/request";
@@ -90,24 +91,40 @@ async function handleStatic(request: Request, bindings: LocalBindings): Promise<
   }
 }
 
-export async function handleRequest(request: Request, bindings: LocalBindings): Promise<Response> {
+async function handleProbe(request: Request, bindings: LocalBindings): Promise<Response> {
   const url = new URL(request.url);
-  if (url.pathname.startsWith("/api/v1/")) {
-    return handleApiRequest(request, bindings as ApiBindings);
+  // Hono dispatches HEAD through GET internally, so use the original method.
+  if (bindings.LOCAL_STUB_MODE !== "enabled" || !isLoopback(url) || request.method !== "GET") {
+    return unavailable();
   }
-  if (url.pathname === PROBE_PATH) {
-    if (bindings.LOCAL_STUB_MODE !== "enabled" || !isLoopback(url) || request.method !== "GET") {
-      return unavailable();
-    }
-    try {
-      const row = await bindings.DB?.prepare(PROBE_SQL).first<{ ready: number }>();
-      if (row?.ready !== 1) return unavailable();
-    } catch {
-      return unavailable();
-    }
-    return new Response("OK", { status: 200, headers: RESPONSE_HEADERS });
+  try {
+    const row = await bindings.DB?.prepare(PROBE_SQL).first<{ ready: number }>();
+    if (row?.ready !== 1) return unavailable();
+  } catch {
+    return unavailable();
   }
-  return handleStatic(request, bindings);
+  return new Response("OK", { status: 200, headers: RESPONSE_HEADERS });
+}
+
+const app = new Hono<{ Bindings: LocalBindings }>({
+  strict: true,
+  // Keep encoded paths opaque, as in the pre-Hono URL.pathname routing.
+  getPath: (request) => new URL(request.url).pathname,
+});
+
+app.onError(() => unavailable());
+app.all("/api/v1/*", (context) => {
+  const request = context.req.raw;
+  // A wildcard also matches its slash-less base in Hono; that was never an API URL.
+  return new URL(request.url).pathname.startsWith("/api/v1/")
+    ? handleApiRequest(request, context.env as ApiBindings)
+    : handleStatic(request, context.env);
+});
+app.all(PROBE_PATH, (context) => handleProbe(context.req.raw, context.env));
+app.all("*", (context) => handleStatic(context.req.raw, context.env));
+
+export async function handleRequest(request: Request, bindings: LocalBindings): Promise<Response> {
+  return app.fetch(request, bindings);
 }
 
 export default { fetch: handleRequest };

@@ -12,7 +12,7 @@ Phase 47では、短時間の記録でも内容が1行見えるように、カ�
 
 Phase 48では、手動の新規登録フォームを分単位（秒は00）にし、内容を任意にしました。手動・ストップウォッチ・タイマーの保存と記録編集で空欄/空白だけを受け付け、保存時に「無題」で補完するため、カレンダーと記録一覧にも「無題」が表示されます。既存記録の編集は引き続き秒単位で、内容だけの編集では元の秒・ミリ秒を保持します。2026-09-27に所有者の承認後、検証済みcommit `bab03ef`をToki Workerへ本番反映しました。認証済みブラウザで分単位・内容任意の手動登録フォームと計測画面を確認し、未認証10経路のAccess保護も検証済みです。DB schema/migration・記録の更新・進行中の計測・認証/料金設定は変更していません。空欄保存と再読み込み後の保持はローカルE2Eで検証し、本番では確認用の記録を保存していません。
 
-2026-10-04に、基盤・Tech Inbox・Daymarkと技術スタックを揃える方針とPhase 49〜56の移行手順を記録しました。Phase 50では移行前の回帰テストと合成データを追加しました。Phase 51では既存のHTML/DOM画面をViteでbuildする構成とReact/Tailwindの開発基盤を導入しました。画面のReact置換はPhase 54、APIのHono化はPhase 52、DBのDrizzle化はPhase 53で行います。独立repository/Worker/D1、機能・URL・記録・PWAを維持し、本番は変更していません。
+2026-10-04に、基盤・Tech Inbox・Daymarkと技術スタックを揃える方針とPhase 49〜56の移行手順を記録しました。Phase 50で移行前の回帰テストと合成データを追加し、Phase 51でViteとReact/Tailwindの開発基盤を導入しました。2026-10-09にPhase 52のHono routing移行を完了しました。次はPhase 53のDrizzleによるDB操作の移行、画面のReact置換はPhase 54です。独立repository/Worker/D1、機能・URL・記録・PWAを維持し、本番は変更していません。
 
 製品仕様とフェーズ計画は基盤repositoryの`docs/toki-design.md`・`docs/toki-roadmap.md`を正とします。このrepositoryへ基盤/Tech Inbox/Daymarkのsourceをコピーしたり、実データやCloudflare資格情報を追加したりしません。
 
@@ -39,6 +39,14 @@ rootの`index.html`・`calendar.html`から、`src/client/`のTypeScript entrypo
 依存は基盤の確認済み完全版へ揃え、jsdom配下Undiciは修正版`8.10.2`に固定しました。7日gate・strict peer・integrity・install script制限を保ち、Drizzle Kitはこの段階では導入しません。詳細は基盤の`docs/dependency-baseline.md`を参照してください。
 
 Phase 51の全品質gateは16 files/332 tests、PC/320pxブラウザ16件、audit指摘0件で成功しました。成果物の配信制限と、ローカルDBの保存先を再buildで消えない場所へ固定するテストも含みます。本番反映・iPhone実機の再確認は行っていません。
+
+### Phase 52のHono routing
+
+Hono `4.13.7`でWorkerの入口とAPIのroutingを統一しました。Zodの入力契約、jose/Access認証、既存のD1処理を使い、URL・method・JSON・status/error・ヘッダー・4096バイト上限を保持します。未知APIにも認証→DB binding→安全な更新要求の検査を適用し、経路ごとのquery・UUID・methodの検査順序も保ちます。
+
+HonoのHEAD処理でGETが選ばれる場合も、元のmethodを確認してAPIは従来の405、ローカルprobeは503を返します。HEADで期限切れタイマーの状態を更新しません。エンコードしたpath・末尾slash・大文字IDを別経路へ補正せず、既存の404を維持します。HTML・hash付きasset・manifest/iconsは従来の認証とCSPを通して配信します。
+
+旧routerで成功した52件の比較テスト、Workerの追加18件、実HTTPの経路テストを含め、全品質gateは17 files/402 tests、PC/320px E2E 17件で成功しました。再監査で開発依存にhigh 2件が見つかったため、Miniflare配下Sharpを`0.35.5`（libvipsバイナリ`1.3.4`）、source-map-jsを`1.2.2`へ限定更新し、最終auditは指摘0件です。7日gate・integrity・strict peer・install script制限は維持しています。DB schema/migration・本番環境は変更していません。
 
 ### Phase 50の移行比較テスト
 
