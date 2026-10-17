@@ -1,5 +1,5 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { dayRange, tokyoDateKey } from "../../src/client/calendar-core.js";
+import { type APIRequestContext, expect, type Page, test } from "@playwright/test";
+import { dayRange, tokyoDateKey } from "../../src/client/calendar-core";
 
 type SavedRecord = {
   id: string;

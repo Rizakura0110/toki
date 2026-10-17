@@ -1,3 +1,26 @@
+export interface CalendarLayoutRecord {
+  readonly id: string;
+  readonly startedAtMs: number;
+  readonly endedAtMs: number | null;
+}
+export interface TimeRange {
+  readonly startMs: number;
+  readonly endMs: number;
+}
+export interface DayLayout<T extends CalendarLayoutRecord> {
+  record: T;
+  clippedStartMs: number;
+  clippedEndMs: number;
+  topPercent: number;
+  heightPercent: number;
+  visualTopPercent: number;
+  visualHeightPercent: number;
+  leftPercent: number;
+  widthPercent: number;
+  visualLeftPercent: number;
+  visualWidthPercent: number;
+}
+
 // Toki stores instants as UTC epoch milliseconds. Modern Asia/Tokyo is UTC+09:00
 // with no daylight-saving transitions; using UTC arithmetic keeps these calendar
 // operations independent of the device's own time zone.
@@ -9,18 +32,11 @@ export const TIMELINE_HOUR_HEIGHT = 120;
 export const TIMELINE_MIN_EVENT_HEIGHT = 44;
 const MIN_VISIBLE_PERCENT = (TIMELINE_MIN_EVENT_HEIGHT / (24 * TIMELINE_HOUR_HEIGHT)) * 100;
 
-/**
- * @typedef {{ id: string, startedAtMs: number, endedAtMs: number | null }} CalendarRecord
- * @typedef {{ startMs: number, endMs: number }} TimeRange
- */
-
-/** @param {number} value @returns {boolean} */
-function validInstant(value) {
+function validInstant(value: number): boolean {
   return Number.isSafeInteger(value) && Number.isFinite(new Date(value).getTime());
 }
 
-/** @param {number} value @returns {Date} */
-function requireDate(value) {
+function requireDate(value: number): Date {
   if (!validInstant(value)) throw new RangeError("Invalid epoch milliseconds");
   const date = new Date(value);
   if (date.getUTCFullYear() < 1 || date.getUTCFullYear() > 9999) {
@@ -29,23 +45,15 @@ function requireDate(value) {
   return date;
 }
 
-/** @param {number} value @returns {string} */
-function twoDigits(value) {
+function twoDigits(value: number): string {
   return String(value).padStart(2, "0");
 }
 
-/** @param {Date} date @returns {string} */
-function utcDateKey(date) {
+function utcDateKey(date: Date): string {
   return `${String(date.getUTCFullYear()).padStart(4, "0")}-${twoDigits(date.getUTCMonth() + 1)}-${twoDigits(date.getUTCDate())}`;
 }
 
-/**
- * Parse an exact Gregorian YYYY-MM-DD key as UTC midnight. Date.UTC cannot be
- * used directly because it interprets years 00–99 as 1900–1999.
- * @param {string} dateKey
- * @returns {number}
- */
-function dateKeyUtcMidnight(dateKey) {
+function dateKeyUtcMidnight(dateKey: string): number {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
   if (match === null) throw new RangeError("Invalid calendar date");
   const year = Number(match[1]);
@@ -67,64 +75,48 @@ function dateKeyUtcMidnight(dateKey) {
   return date.getTime();
 }
 
-/** @param {number} epochMs @returns {string} */
-export function tokyoDateKey(epochMs) {
+export function tokyoDateKey(epochMs: number): string {
   return utcDateKey(requireDate(epochMs + TOKYO_OFFSET_MS));
 }
 
-/** @param {string} dateKey @param {number} days @returns {string} */
-export function addDays(dateKey, days) {
+export function addDays(dateKey: string, days: number): string {
   if (!Number.isSafeInteger(days)) throw new RangeError("Invalid day offset");
   const date = new Date(dateKeyUtcMidnight(dateKey));
   date.setUTCDate(date.getUTCDate() + days);
   return utcDateKey(requireDate(date.getTime()));
 }
 
-/** @param {string} dateKey @returns {string} */
-export function weekStart(dateKey) {
+export function weekStart(dateKey: string): string {
   const date = new Date(dateKeyUtcMidnight(dateKey));
   const daysSinceMonday = (date.getUTCDay() + 6) % 7;
   return addDays(dateKey, -daysSinceMonday);
 }
 
-/** @param {string} dateKey @returns {TimeRange} */
-export function dayRange(dateKey) {
+export function dayRange(dateKey: string): TimeRange {
   const startMs = dateKeyUtcMidnight(dateKey) - TOKYO_OFFSET_MS;
   return { startMs, endMs: startMs + DAY_MS };
 }
 
-/** @param {string} dateKey @returns {TimeRange} */
-export function weekRange(dateKey) {
+export function weekRange(dateKey: string): TimeRange {
   const startMs = dayRange(weekStart(dateKey)).startMs;
   return { startMs, endMs: startMs + 7 * DAY_MS };
 }
 
-/** @param {number} epochMs @returns {string} */
-export function formatTokyoDateTimeInput(epochMs) {
+export function formatTokyoDateTimeInput(epochMs: number): string {
   const local = requireDate(epochMs + TOKYO_OFFSET_MS);
   return `${utcDateKey(local)}T${twoDigits(local.getUTCHours())}:${twoDigits(local.getUTCMinutes())}:${twoDigits(local.getUTCSeconds())}`;
 }
 
-/** Minute-only manual entry; measured records keep their second precision.
- * @param {number} epochMs @returns {string}
- */
-export function formatTokyoMinuteInput(epochMs) {
+export function formatTokyoMinuteInput(epochMs: number): string {
   return formatTokyoDateTimeInput(epochMs).slice(0, 16);
 }
 
-/** @param {string} value @returns {number | null} */
-export function parseTokyoMinuteInput(value) {
+export function parseTokyoMinuteInput(value: string): number | null {
   const epochMs = parseTokyoDateTimeInput(value);
   return epochMs === null ? null : Math.floor(epochMs / 60_000) * 60_000;
 }
 
-/**
- * Strictly interpret a datetime-local control's minute or second precision as
- * Japan local time. Milliseconds are intentionally omitted from the control.
- * @param {string} value
- * @returns {number | null}
- */
-export function parseTokyoDateTimeInput(value) {
+export function parseTokyoDateTimeInput(value: string): number | null {
   const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
   if (match === null) return null;
   const hour = Number(match[2]);
@@ -144,24 +136,15 @@ export function parseTokyoDateTimeInput(value) {
   }
 }
 
-/**
- * Clip records to a Tokyo calendar day and assign lanes within each connected
- * overlap group. An interval ending exactly when another starts is not an
- * overlap. Results are sorted by clipped start, then end, then original order.
- * `topPercent`/`heightPercent` are exact temporal geometry. The visual values
- * ensure a tiny record still has a target big enough to see and interact with.
- * Visual lanes are calculated separately, so adjacent tiny records do not hide
- * each other's enlarged click targets even though their real intervals touch.
- *
- * @template {CalendarRecord} T
- * @param {readonly T[]} records
- * @param {string} dateKey
- * @returns {Array<{ record: T, clippedStartMs: number, clippedEndMs: number, topPercent: number, heightPercent: number, visualTopPercent: number, visualHeightPercent: number, leftPercent: number, widthPercent: number, visualLeftPercent: number, visualWidthPercent: number }>}
- */
-export function layoutDayRecords(records, dateKey) {
+// Keep real instants separate from visual boxes. Minimum-height boxes need their
+// own overlap lanes, including adjacent seconds and records at the day boundary;
+// neither enlargement nor clipping may change persisted times or edit values.
+export function layoutDayRecords<T extends CalendarLayoutRecord>(
+  records: readonly T[],
+  dateKey: string,
+): DayLayout<T>[] {
   const { startMs, endMs } = dayRange(dateKey);
-  /** @type {Array<{ record: T, clippedStartMs: number, clippedEndMs: number, topPercent: number, heightPercent: number, visualTopPercent: number, visualHeightPercent: number, leftPercent: number, widthPercent: number, visualLeftPercent: number, visualWidthPercent: number, originalIndex: number, lane: number }>} */
-  const entries = [];
+  const entries: Array<DayLayout<T> & { originalIndex: number; lane: number }> = [];
   records.forEach((record, originalIndex) => {
     if (
       record === null ||
@@ -214,8 +197,7 @@ export function layoutDayRecords(records, dateKey) {
       groupEnd += 1;
     }
 
-    /** @type {number[]} */
-    const laneEnds = [];
+    const laneEnds: number[] = [];
     for (let index = groupStart; index < groupEnd; index += 1) {
       const entry = entries[index];
       if (entry === undefined) continue;
@@ -258,10 +240,8 @@ export function layoutDayRecords(records, dateKey) {
       visualGroupEnd += 1;
     }
 
-    /** @type {number[]} */
-    const laneEnds = [];
-    /** @type {number[]} */
-    const lanes = [];
+    const laneEnds: number[] = [];
+    const lanes: number[] = [];
     for (let index = visualGroupStart; index < visualGroupEnd; index += 1) {
       const visual = visuals[index];
       if (visual === undefined) continue;
@@ -287,4 +267,3 @@ export function layoutDayRecords(records, dateKey) {
 
   return entries.map(({ originalIndex: _originalIndex, lane: _lane, ...entry }) => entry);
 }
-// Shared calendar arithmetic remains unchanged during the build migration.

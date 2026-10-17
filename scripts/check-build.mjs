@@ -20,8 +20,9 @@ const immutablePublicFiles = [
   "icons/toki-maskable-512.png",
 ];
 const documents = new Map([
-  ["index.html", "measurement"],
-  ["calendar.html", "calendar"],
+  // Both preserved document URLs now boot the same reviewed React application.
+  ["index.html", "bootstrap-entry"],
+  ["calendar.html", "bootstrap-entry"],
 ]);
 const serverOnlyNames = new Set([
   "CLOUDFLARE_API_TOKEN",
@@ -72,6 +73,11 @@ function verifyHtml(source, name, entryName, files) {
   const dom = new JSDOM(source);
   try {
     const document = dom.window.document;
+    assert.equal(
+      document.querySelectorAll("body > div#root").length,
+      1,
+      "One React root is required.",
+    );
     assert.equal(document.querySelectorAll("style, base, iframe, object, embed").length, 0);
     const references = new Set();
     const entries = [];

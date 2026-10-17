@@ -10,8 +10,13 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "json-summary"],
       reportsDirectory: "coverage",
-      include: ["src/**/*.ts"],
-      exclude: ["src/**/*.test.ts", "src/**/*.test.tsx", "src/client/*-entry.ts"],
+      include: ["src/**/*.ts", "src/**/*.tsx"],
+      exclude: [
+        "src/**/*.test.ts",
+        "src/**/*.test.tsx",
+        "src/client/*-entry.ts",
+        "src/client/*-entry.tsx",
+      ],
       thresholds: {
         statements: 80,
         branches: 80,

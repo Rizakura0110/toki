@@ -1,4 +1,7 @@
-/* Do not apply Preflight or scan legacy classes: Phase 51 preserves their rendering. */
+/* Explicit React sources; retain the existing base/reset instead of adding Preflight. */
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
+@import "./ui.css" layer(components);
 @import "tailwindcss/utilities.css" layer(utilities) source(none);
+@source "./*.tsx";
+@source not "./*.test.tsx";

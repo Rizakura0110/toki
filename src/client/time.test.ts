@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { durationForDisplay, estimateServerNowAtReceive, formatDuration } from "./app.js";
+import { durationForDisplay, estimateServerNowAtReceive, formatDuration } from "./time";
 
 describe("browser-only Toki clock presentation", () => {
   it("formats whole hours, minutes and seconds without trusting invalid time", () => {

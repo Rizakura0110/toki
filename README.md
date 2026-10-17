@@ -12,7 +12,7 @@ Phase 47では、短時間の記録でも内容が1行見えるように、カ�
 
 Phase 48では、手動の新規登録フォームを分単位（秒は00）にし、内容を任意にしました。手動・ストップウォッチ・タイマーの保存と記録編集で空欄/空白だけを受け付け、保存時に「無題」で補完するため、カレンダーと記録一覧にも「無題」が表示されます。既存記録の編集は引き続き秒単位で、内容だけの編集では元の秒・ミリ秒を保持します。2026-09-27に所有者の承認後、検証済みcommit `bab03ef`をToki Workerへ本番反映しました。認証済みブラウザで分単位・内容任意の手動登録フォームと計測画面を確認し、未認証10経路のAccess保護も検証済みです。DB schema/migration・記録の更新・進行中の計測・認証/料金設定は変更していません。空欄保存と再読み込み後の保持はローカルE2Eで検証し、本番では確認用の記録を保存していません。
 
-2026-10-04に、基盤・Tech Inbox・Daymarkと技術スタックを揃える方針とPhase 49〜56の移行手順を記録しました。Phase 50で移行前の回帰テストと合成データを追加し、Phase 51でViteとReact/Tailwindの開発基盤を導入、Phase 52でHono routingへ移行しました。2026-10-17にPhase 53のDrizzleによるDB操作への移行を完了しました。次はPhase 54のReactによる画面置換です。独立repository/Worker/D1、機能・URL・記録・PWAを維持し、本番は変更していません。
+2026-10-04に、基盤・Tech Inbox・Daymarkと技術スタックを揃える方針とPhase 49〜56の移行手順を記録しました。Phase 50で比較基準、Phase 51でViteの開発基盤、Phase 52でHono routing、Phase 53でDrizzleによるDB操作を整えました。2026-10-17にPhase 54のReact/TypeScript・React Router・Tailwindへの画面移行を完了しました。独立repository/Worker/D1、機能・URL・記録・PWAを維持し、本番は変更していません。本番前の全体回帰と反映準備は次のPhase 55です。
 
 製品仕様とフェーズ計画は基盤repositoryの`docs/toki-design.md`・`docs/toki-roadmap.md`を正とします。このrepositoryへ基盤/Tech Inbox/Daymarkのsourceをコピーしたり、実データやCloudflare資格情報を追加したりしません。
 
@@ -32,9 +32,9 @@ pnpm check
 
 ### Phase 51の開発基盤
 
-rootの`index.html`・`calendar.html`から、`src/client/`のTypeScript entrypointと既存JavaScript/CSSを読み込みます。ViteのReact/Tailwind/Cloudflare pluginsが`dist/client/`と`dist/toki/`を生成します。`public/`には変更しないmanifestとアイコンだけを残します。React/Router/Testing Library/jsdomの接続も単体テストで検証しますが、Reactを既存DOMへ重ねてmountすることはありません。
+Phase 51ではrootの`index.html`・`calendar.html`から既存JavaScript/CSSを読み込み、画面を保持したままViteへ接続しました。Phase 54以降は同じ2 HTMLから共通のReact entrypointを起動します。ViteのReact/Tailwind/Cloudflare pluginsが`dist/client/`と`dist/toki/`を生成し、`public/`には変更しないmanifestとアイコンだけを残します。
 
-見た目を保つため、Tailwindの[Preflight](https://tailwindcss.com/docs/preflight)と既存HTMLの自動class走査はまだ有効にしません。Reactへの画面置換時に必要なutilityを明示します。ビルド済みJS/CSSは8文字hash付きpathに限定し、すべてWorkerの認証を通します。未知URL・欠落asset・source・source mapをHTMLへfallbackしません。PWA identityと旧HTML URLは維持し、Service Workerは追加しません。
+見た目を保つため、Tailwindの[Preflight](https://tailwindcss.com/docs/preflight)は有効にせず既存のresetを維持します。Phase 54ではReact sourceだけを明示して走査し、テストは除外します。ビルド済みJS/CSSは8文字hash付きpathに限定し、すべてWorkerの認証を通します。未知URL・欠落asset・source・source mapをHTMLへfallbackしません。PWA identityと旧HTML URLは維持し、Service Workerは追加しません。
 
 依存は基盤の確認済み完全版へ揃え、jsdom配下Undiciは修正版`8.10.2`に固定しました。7日gate・strict peer・integrity・install script制限を保ち、Drizzle Kitはこの段階では導入しません。詳細は基盤の`docs/dependency-baseline.md`を参照してください。
 
@@ -59,6 +59,20 @@ Drizzle ORM `0.45.2`で既存のD1 tableを型付きschemaへ対応させ、記�
 全品質gateは19 files/443 tests、PC/320px E2E 17件で成功しました。coverageはstatements 95.02%・branches 94.09%・functions 98.52%・lines 96.58%。browser JS 29,575 bytes・CSS 19,840 bytesはPhase 52と一致し、Worker rawは384,298 bytes（dry-run gzip 80.66 KiB）です。Kitの本番bundle混入とDB errorのSQL/入力内容漏洩を拒否する回帰検査も含みます。
 
 公式配布物・7日gate・互換性を確認し、追加61 package entriesのversion/integrityは基盤と一致しました。既存のresolution/integrityは不変で、補助依存tsxを基盤と同じ`4.23.12`へ揃えています。監査はhigh/critical 0、Kit由来の既知の開発専用moderate 1件です。該当する古いesbuildのHTTPサーバーは起動せず、KitはWorkerに含めません。`check`の末尾は同名のpnpm組み込みコマンドとの衝突を避けて`pnpm run audit`とし、既存の`--audit-level high`方針を明示して実行します。本番deploy・remote DB・Access/料金の変更は行っていません。
+
+### Phase 54のReact画面
+
+`src/client/application.tsx`のReact Routerが`/`・`/index.html`・`/calendar.html`を切り替えます。通常の内部リンクはRouterの公式`useHref`/`useLinkClickHandler`で処理し、修飾キー付きクリックはブラウザに任せます。基盤への戻りリンクは外部サイトへの通常のリンクです。初期データ取得・visibility/bfcache/onlineの同期とintervalはEffectに置き、cleanupで解除します。開始・停止・保存・削除はユーザーのイベントだけから実行します。
+
+計測とカレンダーのstoreはrouteより上で保持し、`useSyncExternalStore`の不変snapshotで描画します。同期的なbusy判定で連打・StrictModeによる二重送信を防ぎ、通信結果が不明な開始・手動登録は同じrequest IDを維持します。手動登録の再試行は送信済みpayloadを固定し、編集/削除の競合は再読み込みを要求します。結果不明の保存を成功とは表示しません。旧DOM操作の`app.js`/`calendar.js`と旧CSSは取り除き、カレンダーの計算をTypeScriptへ移しました。
+
+`tailwind.css`と`ui.css`はTailwindのcomponent/utilityを使い、色・余白・文字・responsiveの境界、1時間120px・最低44pxの短時間表示を維持します。文字はReactのtextとして描画し、編集・追加は従来のnative dialogのfocus/キャンセル/確認を使います。手動入力は分単位、編集は秒単位で、変更していない秒・ミリ秒を保持します。
+
+固定したReact Router `8.3.0`には、未使用の`forwardRef`ラッパーにも残る動的route-module loaderがあります。`scripts/router-wrapper-annotations.ts`で同package内の`Link`・`NavLink`・`Form`の生成とdisplayName設定だけを純粋な式として注釈し、未使用分を除去します。使用するラッパーの挙動は変えず、ライブラリ本体やlockfileも書き換えません。パターンが変わればbuildを停止するテストがあり、成果物の動的importを無条件に許可する例外やCSPの緩和は設けません。
+
+StrictModeの実画面テストとstore/APIのテスト、PC/320pxのE2Eで、計測/復帰/集中表示・日/週・追加/編集/削除・無題・時刻精度・連打・通信結果不明からの回復を検証します。画面移行では依存version・API/DB schema・SQL migration・認証/PWA・本番設定を変更しません。旧新APIの組み合わせ、clean checkout、性能予算と本番反映の準備はPhase 55、実際のdeployは別承認後のPhase 56で行います。
+
+全品質gateは22 files/543 tests、PC/320px E2E 21件で成功しました。coverageはstatements 96.34%・branches 94.47%・functions 97.75%・lines 97.72%。合成データで旧版と新版のPC/320pxの23画面を比較し、計測/集中表示・日/週・追加/編集/削除確認の画像にpixel差がないことを確認しました。TypeScriptの型を除いたカレンダー計算の構文木も旧版と一致します。browser raw JSは258,294 bytes・CSS 23,292 bytesで、Reactを含む分だけ増えます。Worker raw 384,298 bytes（dry-run gzip 80.66 KiB）はPhase 53と不変です。監査はhigh/critical 0、既知の開発専用moderate 1件を継続し、該当するHTTP開発サーバーは起動しません。
 
 ### Phase 50の移行比較テスト
 

@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  TIMELINE_HOUR_HEIGHT,
-  TIMELINE_MIN_EVENT_HEIGHT,
   addDays,
   dayRange,
   formatTokyoDateTimeInput,
@@ -9,10 +7,12 @@ import {
   layoutDayRecords,
   parseTokyoDateTimeInput,
   parseTokyoMinuteInput,
+  TIMELINE_HOUR_HEIGHT,
+  TIMELINE_MIN_EVENT_HEIGHT,
   tokyoDateKey,
   weekRange,
   weekStart,
-} from "./calendar-core.js";
+} from "./calendar-core";
 
 const hour = 60 * 60 * 1_000;
 

@@ -66,12 +66,12 @@ const buildConfig = {
   },
 };
 
-function html(entry: "measurement" | "calendar") {
+function html() {
   return `<!doctype html><html lang="ja"><head>
     <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
     <link rel="stylesheet" href="/assets/styles-abcdefgh.css">
-    <script type="module" src="/assets/${entry}-abcdefgh.js"></script>
-    </head><body><a href="/calendar.html">カレンダー</a></body></html>`;
+    <script type="module" src="/assets/bootstrap-entry-abcdefgh.js"></script>
+    </head><body><div id="root"></div><a href="/calendar.html">カレンダー</a></body></html>`;
 }
 
 describe("Vite client artifact boundary gate", () => {
@@ -96,10 +96,9 @@ describe("Vite client artifact boundary gate", () => {
       "dist/toki/index.js": "export default { fetch() {} };",
       "dist/toki/wrangler.json": JSON.stringify(buildConfig),
       "dist/client/.assetsignore": "wrangler.json\n.dev.vars\n",
-      "dist/client/index.html": html("measurement"),
-      "dist/client/calendar.html": html("calendar"),
-      "dist/client/assets/measurement-abcdefgh.js": 'import "./shared-abcdefgh.js"; export {};',
-      "dist/client/assets/calendar-abcdefgh.js": "export {};",
+      "dist/client/index.html": html(),
+      "dist/client/calendar.html": html(),
+      "dist/client/assets/bootstrap-entry-abcdefgh.js": 'import "./shared-abcdefgh.js"; export {};',
       "dist/client/assets/shared-abcdefgh.js": "export const example = 1;",
       "dist/client/assets/styles-abcdefgh.css": "body { color: black; }",
     };
@@ -121,7 +120,7 @@ describe("Vite client artifact boundary gate", () => {
   it("accepts a synthetic build and reachable shared chunk without a prior real build", async () => {
     const result = await assertBuild(fixtureRoot);
     expect(result).toEqual({
-      files: 14,
+      files: 13,
       javascriptBytes: expect.any(Number),
       cssBytes: expect.any(Number),
       workerBytes: expect.any(Number),
@@ -173,10 +172,7 @@ describe("Vite client artifact boundary gate", () => {
     "<style>body { color: red; }</style>",
     '<div style="color: red">inline style</div>',
   ])("rejects inline HTML code or styling", async (fragment) => {
-    await writeFixture(
-      "dist/client/index.html",
-      html("measurement").replace("</body>", `${fragment}</body>`),
-    );
+    await writeFixture("dist/client/index.html", html().replace("</body>", `${fragment}</body>`));
     await expect(assertBuild(fixtureRoot)).rejects.toThrow();
   });
 
@@ -186,9 +182,10 @@ describe("Vite client artifact boundary gate", () => {
     'import "/src/browser/app.js";',
     'import "./missing-abcdefgh.js";',
     "import(name);",
+    "async function libraryLoader(route) { return import(route.module); } globalThis.loader = libraryLoader;",
     'export * from "https://example.test/external.js";',
   ])("rejects unreviewed or missing JavaScript imports: %s", async (source) => {
-    await writeFixture("dist/client/assets/measurement-abcdefgh.js", source);
+    await writeFixture("dist/client/assets/bootstrap-entry-abcdefgh.js", source);
     await expect(assertBuild(fixtureRoot)).rejects.toThrow();
   });
 

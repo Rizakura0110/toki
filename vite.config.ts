@@ -3,10 +3,11 @@ import { cloudflare } from "@cloudflare/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { routerWrapperAnnotations } from "./scripts/router-wrapper-annotations.ts";
 
 export default defineConfig({
   appType: "mpa",
-  plugins: [react(), tailwindcss(), cloudflare()],
+  plugins: [routerWrapperAnnotations(), react(), tailwindcss(), cloudflare()],
   environments: {
     client: {
       build: {

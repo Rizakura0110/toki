@@ -196,7 +196,9 @@ test("legacy documents protect built hashed assets and source or unknown URLs st
       );
     for (const linkedPath of linkedPaths) paths.add(linkedPath);
   }
-  expect(browserModules.size).toBeGreaterThanOrEqual(3);
+  // The two preserved URLs share one React entry and one stylesheet now.
+  expect([...browserModules].some((path) => path.endsWith(".js"))).toBe(true);
+  expect([...browserModules].some((path) => path.endsWith(".css"))).toBe(true);
   for (const path of browserModules) paths.add(path);
   for (const path of paths) {
     if (path.endsWith(".js") || path.endsWith(".css")) {

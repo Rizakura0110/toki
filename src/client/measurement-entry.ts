@@ -1,3 +1,1 @@
-import "./tailwind.css";
-import "./styles.css";
-import "./app.js";
+import "./bootstrap-entry";

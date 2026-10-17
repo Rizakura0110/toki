@@ -1,10 +1,10 @@
-import { expect, test, type APIRequestContext } from "@playwright/test";
+import { type APIRequestContext, expect, test } from "@playwright/test";
 import {
   addDays,
   dayRange,
   parseTokyoDateTimeInput,
   tokyoDateKey,
-} from "../../src/client/calendar-core.js";
+} from "../../src/client/calendar-core";
 
 const ORIGIN = "http://127.0.0.1:8791";
 const CLOSED_ORIGIN = "http://127.0.0.1:8792";
