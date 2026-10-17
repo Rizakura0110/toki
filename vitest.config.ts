@@ -12,6 +12,8 @@ export default defineConfig({
       reportsDirectory: "coverage",
       include: ["src/**/*.ts", "src/**/*.tsx"],
       exclude: [
+        // Frozen rollback source is a comparison fixture, not shipped application code.
+        "tests/fixtures/phase48/**",
         "src/**/*.test.ts",
         "src/**/*.test.tsx",
         "src/client/*-entry.ts",

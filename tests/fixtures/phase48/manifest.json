@@ -1,0 +1,19 @@
+{
+  "commit": "bab03ef5084b980c481b8126fd34b18604c84249",
+  "files": {
+    "src/api/router.ts": "ef8cb0738e71ac85f7a95ca7b1e65c2d3a8da7a826394c55cd8c34a6bb99bb33",
+    "src/contracts/api.ts": "a44b8f4e9cb05a966a920ed1ab754f8237eac327695ddee1ba805d900cb513c4",
+    "src/data/records.ts": "246d10577cb1631004467d0ecbb7bf28226ba5f51b14264f3f03c586b3458f4b",
+    "src/security/access.ts": "befaad4067f55f4bdbbb4d7b9120f56b53ba2a3bfeb90cc8a8f1534c909e5247",
+    "src/security/request.ts": "d0021b076ca5f80533c3838f0ec7e0df73c845b9413b0ddd0e4316d63d27dc9f",
+    "src/worker.ts": "133fa2324478624672e4ada3297c1bc0cf979039088c4c9a7c9329578b6af3c4",
+    "public/app.js": "742b0f77cfbf9141bdc12b9009e403e31eb3f42629114cc9d5b2ae3cc02109d7",
+    "public/calendar-core.js": "3df999792950f1bbba370781a1b96e7b22a4a0cb1f4ee544fdb96a2127c4b486",
+    "public/calendar.css": "3d4c750054b0fad1b2eb38fb0e1087cfebd88e998f57fcfc32af5d96a86c84b2",
+    "public/calendar.html": "7f1f77176e27f92741d10d98f28f121107eb84bea296d6560180da4a78f7dbd6",
+    "public/calendar.js": "6e55b38b9b5ca0fe7b4781cbaa9304ef5eae74f72b6c04362545f3114193b7ec",
+    "public/index.html": "f799ce0cc6c4602c163685b852349f06a533a9a5926d9f2bfe5468c3cdbb4aeb",
+    "public/styles.css": "f1b536216508bc08c6fe28a88d49d5409f7f253bae5baf762f1aa3643e598cc8",
+    "public/manifest.webmanifest": "77162473609eba3f780038f52c421bb9f33c98e3e0cbde692bfcbad3743394c3"
+  }
+}

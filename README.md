@@ -12,7 +12,7 @@ Phase 47では、短時間の記録でも内容が1行見えるように、カ�
 
 Phase 48では、手動の新規登録フォームを分単位（秒は00）にし、内容を任意にしました。手動・ストップウォッチ・タイマーの保存と記録編集で空欄/空白だけを受け付け、保存時に「無題」で補完するため、カレンダーと記録一覧にも「無題」が表示されます。既存記録の編集は引き続き秒単位で、内容だけの編集では元の秒・ミリ秒を保持します。2026-09-27に所有者の承認後、検証済みcommit `bab03ef`をToki Workerへ本番反映しました。認証済みブラウザで分単位・内容任意の手動登録フォームと計測画面を確認し、未認証10経路のAccess保護も検証済みです。DB schema/migration・記録の更新・進行中の計測・認証/料金設定は変更していません。空欄保存と再読み込み後の保持はローカルE2Eで検証し、本番では確認用の記録を保存していません。
 
-2026-10-04に、基盤・Tech Inbox・Daymarkと技術スタックを揃える方針とPhase 49〜56の移行手順を記録しました。Phase 50で比較基準、Phase 51でViteの開発基盤、Phase 52でHono routing、Phase 53でDrizzleによるDB操作を整えました。2026-10-17にPhase 54のReact/TypeScript・React Router・Tailwindへの画面移行を完了しました。独立repository/Worker/D1、機能・URL・記録・PWAを維持し、本番は変更していません。本番前の全体回帰と反映準備は次のPhase 55です。
+2026-10-04に、基盤・Tech Inbox・Daymarkと技術スタックを揃える方針とPhase 49〜56の移行手順を記録しました。Phase 50で比較基準、Phase 51でViteの開発基盤、Phase 52でHono routing、Phase 53でDrizzleによるDB操作を整えました。2026-10-17にPhase 54のReact/TypeScript・React Router・Tailwindへの画面移行を完了しました。Phase 55では旧本番sourceとの組合せ検証、合成データのprivate backup復元予行、成果物/処理負荷の回帰予算と設定dry-runを品質gateへ加えます。独立repository/Worker/D1、機能・URL・記録・PWAを維持し、本番は変更していません。本番反映はPhase 56の別承認後です。
 
 製品仕様とフェーズ計画は基盤repositoryの`docs/toki-design.md`・`docs/toki-roadmap.md`を正とします。このrepositoryへ基盤/Tech Inbox/Daymarkのsourceをコピーしたり、実データやCloudflare資格情報を追加したりしません。
 
@@ -26,7 +26,19 @@ PLAYWRIGHT_BROWSERS_PATH="$PWD/.cache/ms-playwright" pnpm exec playwright instal
 pnpm check
 ```
 
-`pnpm check`はformat、lint、生成型、browser/Worker/test/Node別のTypeScript、coverage付きtest、local D1 migrationと`time_sessions`検査、Vite build・成果物検査・Worker dry-run、ローカルChromium E2E、依存監査を実行します。E2Eはbuild済みWorkerとassetsを使い、毎回専用の一時D1、認証バイパスあり・なしの2つのloopback Workerを検証します。Cloudflareのremote DBやWorkerは作成・変更しません。GitHub Actionsも同じgateを使い、deployは行いません。
+`pnpm check`はformat、lint、生成型、browser/Worker/test/Node別のTypeScript、coverage付きtest、local D1 migrationと`time_sessions`検査、Vite build・成果物検査・Worker dry-run、ローカルChromium E2E、依存監査を実行します。E2Eはbuild済みWorkerとassetsを使い、毎回専用の一時D1、認証バイパスあり・なしの2つのloopback Workerを検証します。Phase 55以降は`release:local`と`e2e:migration`も含みます。Cloudflareのremote DBやWorkerは作成・変更しません。GitHub Actionsも同じgateを使い、deployは行いません。
+
+### Phase 55の反映前検証
+
+`tests/fixtures/phase48/`は最後に本番反映したcommit `bab03ef5084b980c481b8126fd34b18604c84249`の旧画面・API・DB・認証14ファイルです。改変検出のSHA-256と、変更しないmigration/PWAの9ファイルのhashを検査します。固定sourceは整形・coverageの対象から除き、現行runtimeのcoverage閾値は下げません。旧依存graphは再installせず、現行の検証済みtoolchainでsource互換性を確認します。
+
+`pnpm e2e:migration`は旧画面＋新API、新画面＋旧API、旧画面＋旧APIの3構成で、PC 1280pxとスマホ320pxの計18テストを実行します。計測/タイマー/集中表示/再読込、空欄・分入力・秒精度、競合・確認付き削除・再送拒否、manifest/icon/Service Workerなしを実際のローカルD1へ接続して検証します。test専用Workerはloopback HTTPと明示flagだけで動き、本番へ配信しません。
+
+単体/統合テストではmode 700/600の私有領域へ合成D1をexportし、空のローカルD1への復元後に全列・削除履歴・migration/index/trigger/整合性を照合します。未完了4状態を維持し、新版で編集したデータを旧版でも継続・保存・削除できるか検証します。実データは使わず、一時SQL/DBはテスト終了時に削除します。
+
+`pnpm release:local`はbuild済みWorkerのraw/gzip 512/128 KiB、browser JS 320/110 KiB、CSS 32/10 KiBを独自予算として検査し、合成D1 IDのstage/live両設定で`deploy --dry-run`を実行します。実際の本番設定や資格情報は読み書きしません。APIの発行query数は通常1〜5、削除済み開始requestの拒否を最大7として検査します。1万件で各300 requestのNode+SQLite CPU比較も行いますが、認証bypassのローカル平均であり、Cloudflareの本番CPUや課金行数を保証しません。
+
+本番直前のprivate SQL export・空のローカルD1での復元照合、active/rollback version ID、本人限定Access・D1 binding・料金/利用量はPhase 56の承認後に取得します。反映と切り戻しの手順は基盤repositoryの`docs/toki-operations.md`を正とし、本番DBの時点復元や新resource作成は今回のWorker反映に含めません。
 
 必要な場合に限り、`pnpm dev`でbuild後のローカルWorkerを起動できます。Phase 51では本番と同じCSP・認証経路を検証するため、Vite HMRではなくbuild済み成果物を配信します。source編集後は停止・再実行してください。migration・検査・起動のローカルDB保存先をrepository内の`.wrangler/state`へ固定し、再buildで消される`dist`の中には保存しません。`/__local/db`と画面/APIの認証バイパスは明示的なローカル起動引数かつloopback HTTPに限定します。`.dev.vars`や`.env`は追跡しません。本番では画面/APIとも本人限定Accessに加えてWorkerでJWTを検証します。
 

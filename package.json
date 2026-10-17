@@ -14,6 +14,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "e2e": "playwright test",
+    "e2e:migration": "playwright test --config playwright.migration.config.ts",
+    "release:local": "node scripts/verify-release-local.mjs",
     "boundaries": "node scripts/check-boundaries.mjs",
     "production:config:stage": "node scripts/prepare-production-config.mjs stage",
     "production:config:live": "node scripts/prepare-production-config.mjs live",
@@ -21,7 +23,7 @@
     "db:verify:local": "wrangler d1 execute DB --config wrangler.jsonc --local --persist-to .wrangler/state --command \"SELECT COUNT(*) AS records FROM time_sessions\"",
     "build": "vite build && node scripts/check-build.mjs && wrangler deploy --dry-run --config dist/toki/wrangler.json --outdir .tmp/build-dry-run",
     "audit": "pnpm audit --audit-level high",
-    "check": "pnpm boundaries && pnpm format:check && pnpm lint && pnpm cf:typecheck && pnpm typecheck && pnpm test:coverage && pnpm db:migrate:local && pnpm db:verify:local && pnpm build && pnpm e2e && pnpm run audit"
+    "check": "pnpm boundaries && pnpm format:check && pnpm lint && pnpm cf:typecheck && pnpm typecheck && pnpm test:coverage && pnpm db:migrate:local && pnpm db:verify:local && pnpm build && pnpm release:local && pnpm e2e && pnpm e2e:migration && pnpm run audit"
   },
   "engines": {
     "node": ">=24 <25"

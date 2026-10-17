@@ -1,0 +1,11 @@
+{
+  "migrations/0001_initial.sql": "745dadcf9db168145fa2da373e1f498d9b513c3ce2597634cdf3f7dae944dff8",
+  "migrations/0002_manual_records.sql": "b8a44304e412dcdbca97f2a1062d629129a5dfca27947f9639721c2b6a227b0b",
+  "public/manifest.webmanifest": "77162473609eba3f780038f52c421bb9f33c98e3e0cbde692bfcbad3743394c3",
+  "public/icons/toki.svg": "c04644e5b612a4dc86bb96a6fda91e8a9a626167184eaf8beafa41652af64641",
+  "public/icons/toki-maskable.svg": "19d9dbef317af432f3f727284186eb4276c7230ccc098af3185dce636dcb2b0e",
+  "public/icons/toki-180.png": "6967d482fe18cbf6669b8d629331d1428d5301ad94348b7752d18d9442a0eb44",
+  "public/icons/toki-192.png": "7c25d9d9bcafb9c5e190a4069e0cb31a16fcab48d160e59ff94e40814d284b08",
+  "public/icons/toki-512.png": "2876d57ba8e7366d97af64088fd7148034b9c41aa82af148454d2b127a0a0cc6",
+  "public/icons/toki-maskable-512.png": "1a4b0eb0f689af1ee00324161909bf641b71f1af9211c3752d591eb9989782cd"
+}

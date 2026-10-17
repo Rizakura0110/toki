@@ -1,0 +1,33 @@
+{
+  "id": "/",
+  "name": "Toki — 時間を記録する",
+  "short_name": "Toki",
+  "lang": "ja",
+  "dir": "ltr",
+  "description": "計測した時間と、その時間にしたことを記録するアプリ",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f5f0",
+  "theme_color": "#f6f5f0",
+  "icons": [
+    {
+      "src": "/icons/toki-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/toki-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/toki-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
