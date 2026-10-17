@@ -21,13 +21,14 @@
     "db:verify:local": "wrangler d1 execute DB --config wrangler.jsonc --local --persist-to .wrangler/state --command \"SELECT COUNT(*) AS records FROM time_sessions\"",
     "build": "vite build && node scripts/check-build.mjs && wrangler deploy --dry-run --config dist/toki/wrangler.json --outdir .tmp/build-dry-run",
     "audit": "pnpm audit --audit-level high",
-    "check": "pnpm boundaries && pnpm format:check && pnpm lint && pnpm cf:typecheck && pnpm typecheck && pnpm test:coverage && pnpm db:migrate:local && pnpm db:verify:local && pnpm build && pnpm e2e && pnpm audit"
+    "check": "pnpm boundaries && pnpm format:check && pnpm lint && pnpm cf:typecheck && pnpm typecheck && pnpm test:coverage && pnpm db:migrate:local && pnpm db:verify:local && pnpm build && pnpm e2e && pnpm run audit"
   },
   "engines": {
     "node": ">=24 <25"
   },
   "packageManager": "pnpm@11.22.0",
   "dependencies": {
+    "drizzle-orm": "0.45.2",
     "hono": "4.13.7",
     "jose": "6.2.9",
     "react": "19.2.8",
@@ -48,6 +49,7 @@
     "@types/react-dom": "19.2.4",
     "@vitejs/plugin-react": "6.0.5",
     "@vitest/coverage-v8": "4.1.11",
+    "drizzle-kit": "0.31.10",
     "jsdom": "30.0.1",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2",

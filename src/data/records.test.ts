@@ -30,7 +30,7 @@ const openConnections: DatabaseSync[] = [];
 
 function localDb(
   sqlite = new DatabaseSync(":memory:"),
-  onPrepare?: (sql: string) => void,
+  onPrepare?: (sql: string, parameters: (string | number | null)[]) => void,
   includeTriggerChanges = false,
 ): D1Database {
   sqlite.exec(initialMigration);
@@ -38,12 +38,12 @@ function localDb(
   openConnections.push(sqlite);
   return {
     prepare(sql: string) {
-      onPrepare?.(sql);
       const prepared = sqlite.prepare(sql);
       let parameters: (string | number | null)[] = [];
       return {
         bind(...values: (string | number | null)[]) {
           parameters = values;
+          onPrepare?.(sql, values);
           return this;
         },
         async first<Row>() {
@@ -52,15 +52,24 @@ function localDb(
         async all<Row>() {
           return { results: prepared.all(...parameters) as Row[] };
         },
+        async raw() {
+          const raw = sqlite.prepare(sql);
+          raw.setReturnArrays(true);
+          return raw.all(...parameters);
+        },
         async run() {
+          const before = sqlite.prepare("SELECT total_changes() AS count").get() as {
+            count: number;
+          };
           const result = prepared.run(...parameters);
-          const triggerChanges =
-            includeTriggerChanges &&
-            sql.startsWith("DELETE FROM time_sessions") &&
-            result.changes > 0
-              ? 1
-              : 0;
-          return { meta: { changes: Number(result.changes) + triggerChanges } };
+          const after = sqlite.prepare("SELECT total_changes() AS count").get() as {
+            count: number;
+          };
+          return {
+            meta: {
+              changes: includeTriggerChanges ? after.count - before.count : Number(result.changes),
+            },
+          };
         },
       };
     },
@@ -642,8 +651,8 @@ describe("Toki D1 session repository", () => {
 
   it("keeps a dense saved history indexed and returns only records intersecting a range", async () => {
     const sqlite = new DatabaseSync(":memory:");
-    const preparedSql: string[] = [];
-    const db = localDb(sqlite, (sql) => preparedSql.push(sql));
+    const preparedSql: { sql: string; parameters: (string | number | null)[] }[] = [];
+    const db = localDb(sqlite, (sql, parameters) => preparedSql.push({ sql, parameters }));
     const minute = 60_000;
     const insert = sqlite.prepare(
       `INSERT INTO time_sessions
@@ -689,35 +698,32 @@ describe("Toki D1 session repository", () => {
       ),
     ).toBe(true);
 
+    const rangeQuery = preparedSql.find(({ sql }) => sql.startsWith("select "));
+    expect(rangeQuery).toBeDefined();
     const plan = sqlite
-      .prepare(
-        `EXPLAIN QUERY PLAN SELECT * FROM time_sessions
-         WHERE status = 'saved' AND started_at_ms < ? AND ended_at_ms > ?
-         ORDER BY started_at_ms ASC, id ASC`,
-      )
-      .all(endMs, startMs) as { detail: string }[];
+      .prepare(`EXPLAIN QUERY PLAN ${rangeQuery?.sql}`)
+      .all(...(rangeQuery?.parameters ?? [])) as { detail: string }[];
     expect(
       plan.some(({ detail }) => /USING INDEX time_sessions_saved_(start|end)/.test(detail)),
     ).toBe(true);
 
-    const openPlan = sqlite
-      .prepare(
-        `EXPLAIN QUERY PLAN SELECT * FROM time_sessions
-         WHERE status IN ('running', 'awaiting_description') LIMIT 1`,
-      )
-      .all() as { detail: string }[];
-    expect(openPlan.some(({ detail }) => detail.includes("time_sessions_one_open"))).toBe(true);
-
     expect(await getCurrentSession(db, endMs)).toBeNull();
     const timerUpdate = preparedSql.find(
-      (sql) => sql.includes("UPDATE time_sessions") && sql.includes("deadline_at_ms <= ?"),
+      ({ sql }) =>
+        sql.startsWith('update "time_sessions"') && sql.includes('"deadline_at_ms" <= ?'),
     );
     expect(timerUpdate).toBeDefined();
     const timerUpdatePlan = sqlite
-      .prepare(`EXPLAIN QUERY PLAN ${timerUpdate}`)
-      .all(endMs, endMs) as { detail: string }[];
+      .prepare(`EXPLAIN QUERY PLAN ${timerUpdate?.sql}`)
+      .all(...(timerUpdate?.parameters ?? [])) as { detail: string }[];
     expect(timerUpdatePlan.some(({ detail }) => detail.includes("time_sessions_one_open"))).toBe(
       true,
     );
+    const openQuery = preparedSql.at(-1);
+    expect(openQuery?.sql).toContain("IN ('running', 'awaiting_description')");
+    const openPlan = sqlite
+      .prepare(`EXPLAIN QUERY PLAN ${openQuery?.sql}`)
+      .all(...(openQuery?.parameters ?? [])) as { detail: string }[];
+    expect(openPlan.some(({ detail }) => detail.includes("time_sessions_one_open"))).toBe(true);
   });
 });

@@ -12,7 +12,7 @@ Phase 47では、短時間の記録でも内容が1行見えるように、カ�
 
 Phase 48では、手動の新規登録フォームを分単位（秒は00）にし、内容を任意にしました。手動・ストップウォッチ・タイマーの保存と記録編集で空欄/空白だけを受け付け、保存時に「無題」で補完するため、カレンダーと記録一覧にも「無題」が表示されます。既存記録の編集は引き続き秒単位で、内容だけの編集では元の秒・ミリ秒を保持します。2026-09-27に所有者の承認後、検証済みcommit `bab03ef`をToki Workerへ本番反映しました。認証済みブラウザで分単位・内容任意の手動登録フォームと計測画面を確認し、未認証10経路のAccess保護も検証済みです。DB schema/migration・記録の更新・進行中の計測・認証/料金設定は変更していません。空欄保存と再読み込み後の保持はローカルE2Eで検証し、本番では確認用の記録を保存していません。
 
-2026-10-04に、基盤・Tech Inbox・Daymarkと技術スタックを揃える方針とPhase 49〜56の移行手順を記録しました。Phase 50で移行前の回帰テストと合成データを追加し、Phase 51でViteとReact/Tailwindの開発基盤を導入しました。2026-10-09にPhase 52のHono routing移行を完了しました。次はPhase 53のDrizzleによるDB操作の移行、画面のReact置換はPhase 54です。独立repository/Worker/D1、機能・URL・記録・PWAを維持し、本番は変更していません。
+2026-10-04に、基盤・Tech Inbox・Daymarkと技術スタックを揃える方針とPhase 49〜56の移行手順を記録しました。Phase 50で移行前の回帰テストと合成データを追加し、Phase 51でViteとReact/Tailwindの開発基盤を導入、Phase 52でHono routingへ移行しました。2026-10-17にPhase 53のDrizzleによるDB操作への移行を完了しました。次はPhase 54のReactによる画面置換です。独立repository/Worker/D1、機能・URL・記録・PWAを維持し、本番は変更していません。
 
 製品仕様とフェーズ計画は基盤repositoryの`docs/toki-design.md`・`docs/toki-roadmap.md`を正とします。このrepositoryへ基盤/Tech Inbox/Daymarkのsourceをコピーしたり、実データやCloudflare資格情報を追加したりしません。
 
@@ -47,6 +47,18 @@ Hono `4.13.7`でWorkerの入口とAPIのroutingを統一しました。Zodの入
 HonoのHEAD処理でGETが選ばれる場合も、元のmethodを確認してAPIは従来の405、ローカルprobeは503を返します。HEADで期限切れタイマーの状態を更新しません。エンコードしたpath・末尾slash・大文字IDを別経路へ補正せず、既存の404を維持します。HTML・hash付きasset・manifest/iconsは従来の認証とCSPを通して配信します。
 
 旧routerで成功した52件の比較テスト、Workerの追加18件、実HTTPの経路テストを含め、全品質gateは17 files/402 tests、PC/320px E2E 17件で成功しました。再監査で開発依存にhigh 2件が見つかったため、Miniflare配下Sharpを`0.35.5`（libvipsバイナリ`1.3.4`）、source-map-jsを`1.2.2`へ限定更新し、最終auditは指摘0件です。7日gate・integrity・strict peer・install script制限は維持しています。DB schema/migration・本番環境は変更していません。
+
+### Phase 53のDrizzleによるDB操作
+
+Drizzle ORM `0.45.2`で既存のD1 tableを型付きschemaへ対応させ、記録・未完了計測の取得、更新、削除を移行しました。時刻は整数のUTCミリ秒、状態・null・版数とAPI契約は従来どおりです。開始と手動登録だけは、`INSERT OR IGNORE`と削除済みrequest IDの検査を1文で保つため、Drizzleのparameterized SQLを使います。部分indexに対応する固定status条件も維持しています。
+
+`0001_initial.sql`・`0002_manual_records.sql`と適用履歴は変更しません。削除とrequest ID保持を原子的に行うtriggerは既存SQLを正とします。Kitはそのtriggerを表現せず、inline UNIQUEも名前付きindexとして生成するため、生成DDLを既存DBへ適用しません。開発専用のDrizzle Kit `0.31.10`と`drizzle.config.ts`はreview用で、出力先はGit無視対象`.tmp/drizzle-review`のみ。自動push/migrateやremote driverは設定していません。
+
+`tests/fixtures/phase52-records.ts`は移行前commit `2c5da99`のDB実装をそのまま固定したテスト専用比較元です。26操作の結果・全列・操作ごとのquery数をSQLiteと隔離したローカルD1で比較し、未完了4状態、二重開始、編集/削除の競合、trigger失敗時の削除rollback、検索indexと物理schema/移行履歴の保持を検証します。1万件の履歴に対する検査も、実際にDrizzleが発行したSQLとparameterを使います。
+
+全品質gateは19 files/443 tests、PC/320px E2E 17件で成功しました。coverageはstatements 95.02%・branches 94.09%・functions 98.52%・lines 96.58%。browser JS 29,575 bytes・CSS 19,840 bytesはPhase 52と一致し、Worker rawは384,298 bytes（dry-run gzip 80.66 KiB）です。Kitの本番bundle混入とDB errorのSQL/入力内容漏洩を拒否する回帰検査も含みます。
+
+公式配布物・7日gate・互換性を確認し、追加61 package entriesのversion/integrityは基盤と一致しました。既存のresolution/integrityは不変で、補助依存tsxを基盤と同じ`4.23.12`へ揃えています。監査はhigh/critical 0、Kit由来の既知の開発専用moderate 1件です。該当する古いesbuildのHTTPサーバーは起動せず、KitはWorkerに含めません。`check`の末尾は同名のpnpm組み込みコマンドとの衝突を避けて`pnpm run audit`とし、既存の`--audit-level high`方針を明示して実行します。本番deploy・remote DB・Access/料金の変更は行っていません。
 
 ### Phase 50の移行比較テスト
 

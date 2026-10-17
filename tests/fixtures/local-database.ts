@@ -32,6 +32,11 @@ export function createBaselineDatabase(migrated = true) {
         async all<Row>() {
           return { results: statement.all(...parameters) as Row[] };
         },
+        async raw() {
+          const raw = sqlite.prepare(sql);
+          raw.setReturnArrays(true);
+          return raw.all(...parameters);
+        },
         async run() {
           const before = sqlite.prepare("SELECT total_changes() AS count").get() as {
             count: number;

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { lstat, readFile, readdir } from "node:fs/promises";
+import { lstat, readdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { JSDOM } from "jsdom";
@@ -248,7 +248,16 @@ export async function assertBuild(root = repositoryRoot) {
     if (hashedAsset.test(`/${file}`))
       assert.ok(referenced.has(`/${file}`), `Unreachable output: ${file}`);
   }
-  const workerBytes = (await lstat(join(root, "dist/toki/index.js"))).size;
+  const workerSource = await readFile(join(root, "dist/toki/index.js"), "utf8");
+  // ORM JSDoc mentions Kit without importing it. Detect bundled module paths
+  // and development entrypoints, not that harmless explanatory prose.
+  assert.ok(
+    !/node_modules\/(?:\.pnpm\/)?(?:drizzle-kit[@/]|@esbuild-kit[+/])|\b(?:function|class|var|const|let)\s+(?:generateSQLiteMigration|startStudioSQLiteServer)\b/u.test(
+      workerSource,
+    ),
+    "Development-only Drizzle Kit must not enter the Worker bundle.",
+  );
+  const workerBytes = Buffer.byteLength(workerSource);
   return { files: files.size, javascriptBytes, cssBytes, workerBytes };
 }
 

@@ -131,6 +131,26 @@ describe("Vite client artifact boundary gate", () => {
     expect(result.workerBytes).toBeGreaterThan(0);
   });
 
+  it.each([
+    "// node_modules/.pnpm/drizzle-kit@0.31.10/node_modules/drizzle-kit/api.js",
+    "// node_modules/.pnpm/@esbuild-kit+core-utils@3.3.2/node_modules/@esbuild-kit/core-utils/dist/index.js",
+    "function generateSQLiteMigration() {}",
+    "var startStudioSQLiteServer = () => {};",
+  ])("rejects development-only Drizzle code in the Worker: %s", async (marker) => {
+    await writeFixture("dist/toki/index.js", `${marker}\nexport default { fetch() {} };`);
+    await expect(assertBuild(fixtureRoot)).rejects.toThrow(/Development-only Drizzle Kit/u);
+  });
+
+  it("accepts an ORM documentation comment mentioning Kit without its code", async () => {
+    await writeFixture(
+      "dist/toki/index.js",
+      "// This value does not affect drizzle-kit behavior.\nexport default { fetch() {} };",
+    );
+    await expect(assertBuild(fixtureRoot)).resolves.toMatchObject({
+      workerBytes: expect.any(Number),
+    });
+  });
+
   it.each(["private.json", "worker.js", "assets/measurement-abcdefgh.js.map"])(
     "rejects an extra browser file: %s",
     async (path) => {
@@ -203,6 +223,14 @@ describe("Vite client artifact boundary gate", () => {
 });
 
 describe("local database persistence across Vite rebuilds", () => {
+  it("runs the configured high-severity audit gate instead of pnpm's same-named builtin", async () => {
+    const packageJson = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
+    expect(packageJson.scripts.audit).toBe("pnpm audit --audit-level high");
+    expect(packageJson.scripts.check).toMatch(/&& pnpm run audit$/u);
+  });
+
   it("pins dev and local D1 commands to the same repository-relative state path", async () => {
     const packageJson = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as {
       scripts: Record<string, string>;

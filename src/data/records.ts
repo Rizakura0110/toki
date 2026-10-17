@@ -1,27 +1,21 @@
 /** D1-backed measurement sessions and the saved records derived from them. */
+import { and, asc, eq, gt, lt, lte, sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
+import {
+  deletedClientRequestIds,
+  openSessionPredicate,
+  savedRecordPredicate,
+  timeSessions,
+} from "./schema";
 
 export const MAX_TIMER_SECONDS = 24 * 60 * 60;
 export const MAX_RECORD_MS = 366 * 24 * 60 * 60 * 1000;
 export const MAX_DESCRIPTION_LENGTH = 500;
 
-export type SessionMode = "stopwatch" | "timer" | "manual";
+export type SessionMode = TokiSession["mode"];
 export type MeasurementMode = Exclude<SessionMode, "manual">;
-export type SessionStatus = "running" | "awaiting_description" | "saved" | "discarded";
-
-export interface TokiSession {
-  readonly id: string;
-  readonly clientRequestId: string;
-  readonly mode: SessionMode;
-  readonly status: SessionStatus;
-  readonly startedAtMs: number;
-  readonly timerSeconds: number | null;
-  readonly deadlineAtMs: number | null;
-  readonly endedAtMs: number | null;
-  readonly description: string | null;
-  readonly version: number;
-  readonly createdAtMs: number;
-  readonly updatedAtMs: number;
-}
+export type SessionStatus = TokiSession["status"];
+export type TokiSession = Readonly<typeof timeSessions.$inferSelect>;
 
 export type TokiDataErrorCode = "validation" | "conflict" | "not_found";
 
@@ -35,21 +29,6 @@ export class TokiDataError extends Error {
     this.code = code;
     if (currentSession) this.currentSession = currentSession;
   }
-}
-
-interface SessionRow {
-  id: string;
-  client_request_id: string;
-  mode: SessionMode;
-  status: SessionStatus;
-  started_at_ms: number;
-  timer_seconds: number | null;
-  deadline_at_ms: number | null;
-  ended_at_ms: number | null;
-  description: string | null;
-  version: number;
-  created_at_ms: number;
-  updated_at_ms: number;
 }
 
 export interface StartSessionInput {
@@ -70,23 +49,6 @@ export interface EditSavedRecordInput {
   readonly endedAtMs: number;
   readonly description: string;
   readonly expectedVersion: number;
-}
-
-function rowToSession(row: SessionRow): TokiSession {
-  return {
-    id: row.id,
-    clientRequestId: row.client_request_id,
-    mode: row.mode,
-    status: row.status,
-    startedAtMs: row.started_at_ms,
-    timerSeconds: row.timer_seconds,
-    deadlineAtMs: row.deadline_at_ms,
-    endedAtMs: row.ended_at_ms,
-    description: row.description,
-    version: row.version,
-    createdAtMs: row.created_at_ms,
-    updatedAtMs: row.updated_at_ms,
-  };
 }
 
 function validInstant(value: number): boolean {
@@ -158,24 +120,40 @@ function requireStartInput(input: StartSessionInput, nowMs: number): void {
 }
 
 async function selectById(db: D1Database, id: string): Promise<TokiSession | null> {
-  const row = await db
-    .prepare("SELECT * FROM time_sessions WHERE id = ?")
-    .bind(id)
-    .first<SessionRow>();
-  return row ? rowToSession(row) : null;
+  return (
+    (await drizzle(db).select().from(timeSessions).where(eq(timeSessions.id, id)).limit(1).get()) ??
+    null
+  );
+}
+
+async function selectByRequestId(db: D1Database, requestId: string): Promise<TokiSession | null> {
+  return (
+    (await drizzle(db)
+      .select()
+      .from(timeSessions)
+      .where(eq(timeSessions.clientRequestId, requestId))
+      .limit(1)
+      .get()) ?? null
+  );
 }
 
 async function materializeExpiredTimer(db: D1Database, nowMs: number): Promise<void> {
-  await db
-    .prepare(
-      `UPDATE time_sessions
-       SET status = 'awaiting_description', ended_at_ms = deadline_at_ms,
-           updated_at_ms = ?, version = version + 1
-       -- Keep the partial one-open index eligible even though the second condition is narrower.
-       WHERE status IN ('running', 'awaiting_description')
-         AND status = 'running' AND mode = 'timer' AND deadline_at_ms <= ?`,
+  await drizzle(db)
+    .update(timeSessions)
+    .set({
+      status: "awaiting_description",
+      endedAtMs: timeSessions.deadlineAtMs,
+      updatedAtMs: nowMs,
+      version: sql`${timeSessions.version} + 1`,
+    })
+    .where(
+      and(
+        openSessionPredicate,
+        eq(timeSessions.status, "running"),
+        eq(timeSessions.mode, "timer"),
+        lte(timeSessions.deadlineAtMs, nowMs),
+      ),
     )
-    .bind(nowMs, nowMs)
     .run();
 }
 
@@ -186,12 +164,10 @@ export async function getCurrentSession(
 ): Promise<TokiSession | null> {
   requireNow(nowMs);
   await materializeExpiredTimer(db, nowMs);
-  const row = await db
-    .prepare(
-      "SELECT * FROM time_sessions WHERE status IN ('running', 'awaiting_description') LIMIT 1",
-    )
-    .first<SessionRow>();
-  return row ? rowToSession(row) : null;
+  return (
+    (await drizzle(db).select().from(timeSessions).where(openSessionPredicate).limit(1).get()) ??
+    null
+  );
 }
 
 export async function getSession(
@@ -213,15 +189,12 @@ export async function startSession(
 ): Promise<TokiSession> {
   requireStartInput(input, nowMs);
   const current = await getCurrentSession(db, nowMs);
-  const existing = await db
-    .prepare("SELECT * FROM time_sessions WHERE client_request_id = ?")
-    .bind(input.clientRequestId)
-    .first<SessionRow>();
+  const existing = await selectByRequestId(db, input.clientRequestId);
   if (existing) {
-    if (existing.mode !== input.mode || existing.timer_seconds !== (input.timerSeconds ?? null)) {
+    if (existing.mode !== input.mode || existing.timerSeconds !== (input.timerSeconds ?? null)) {
       throw new TokiDataError("conflict", "Request ID was used with different settings");
     }
-    return rowToSession(existing);
+    return existing;
   }
 
   if (current) {
@@ -231,38 +204,23 @@ export async function startSession(
   const id = crypto.randomUUID();
   const timerSeconds = input.timerSeconds ?? null;
   const deadlineAtMs = timerSeconds === null ? null : nowMs + timerSeconds * 1000;
-  await db
-    .prepare(
-      `INSERT OR IGNORE INTO time_sessions
+  // Keep OR IGNORE and the tombstone anti-check in one statement. Splitting the
+  // check from the insert would allow a concurrent replay to resurrect a record.
+  // Drizzle's bound SQL preserves the old conflict semantics, including CHECK.
+  await drizzle(db).run(sql`INSERT OR IGNORE INTO ${timeSessions}
        (id, client_request_id, mode, status, started_at_ms, timer_seconds,
         deadline_at_ms, ended_at_ms, description, version, created_at_ms, updated_at_ms)
-       SELECT ?, ?, ?, 'running', ?, ?, ?, NULL, NULL, 1, ?, ?
+       SELECT ${id}, ${input.clientRequestId}, ${input.mode}, 'running', ${nowMs}, ${timerSeconds}, ${deadlineAtMs}, NULL, NULL, 1, ${nowMs}, ${nowMs}
        WHERE NOT EXISTS (
-         SELECT 1 FROM deleted_client_request_ids WHERE client_request_id = ?
-       )`,
-    )
-    .bind(
-      id,
-      input.clientRequestId,
-      input.mode,
-      nowMs,
-      timerSeconds,
-      deadlineAtMs,
-      nowMs,
-      nowMs,
-      input.clientRequestId,
-    )
-    .run();
+         SELECT 1 FROM ${deletedClientRequestIds} WHERE ${deletedClientRequestIds.clientRequestId} = ${input.clientRequestId}
+       )`);
 
-  const result = await db
-    .prepare("SELECT * FROM time_sessions WHERE client_request_id = ?")
-    .bind(input.clientRequestId)
-    .first<SessionRow>();
+  const result = await selectByRequestId(db, input.clientRequestId);
   if (result) {
-    if (result.mode !== input.mode || result.timer_seconds !== timerSeconds) {
+    if (result.mode !== input.mode || result.timerSeconds !== timerSeconds) {
       throw new TokiDataError("conflict", "Request ID was used with different settings");
     }
-    return rowToSession(result);
+    return result;
   }
   throw new TokiDataError(
     "conflict",
@@ -282,13 +240,21 @@ export async function stopSession(db: D1Database, id: string, nowMs: number): Pr
     session.startedAtMs + 1,
     Math.min(nowMs, session.deadlineAtMs ?? Number.POSITIVE_INFINITY),
   );
-  await db
-    .prepare(
-      `UPDATE time_sessions
-       SET status = 'awaiting_description', ended_at_ms = ?, updated_at_ms = ?, version = version + 1
-       WHERE id = ? AND status = 'running' AND version = ?`,
+  await drizzle(db)
+    .update(timeSessions)
+    .set({
+      status: "awaiting_description",
+      endedAtMs,
+      updatedAtMs: nowMs,
+      version: sql`${timeSessions.version} + 1`,
+    })
+    .where(
+      and(
+        eq(timeSessions.id, id),
+        eq(timeSessions.status, "running"),
+        eq(timeSessions.version, session.version),
+      ),
     )
-    .bind(endedAtMs, nowMs, id, session.version)
     .run();
   const result = await selectById(db, id);
   if (!result) throw new TokiDataError("not_found", "Session not found");
@@ -310,13 +276,21 @@ export async function saveSession(
     throw new TokiDataError("conflict", "Session is not awaiting a description");
   }
   requireInterval(session.startedAtMs, session.endedAtMs);
-  await db
-    .prepare(
-      `UPDATE time_sessions
-       SET status = 'saved', description = ?, updated_at_ms = ?, version = version + 1
-       WHERE id = ? AND status = 'awaiting_description' AND version = ?`,
+  await drizzle(db)
+    .update(timeSessions)
+    .set({
+      status: "saved",
+      description,
+      updatedAtMs: nowMs,
+      version: sql`${timeSessions.version} + 1`,
+    })
+    .where(
+      and(
+        eq(timeSessions.id, id),
+        eq(timeSessions.status, "awaiting_description"),
+        eq(timeSessions.version, session.version),
+      ),
     )
-    .bind(description, nowMs, id, session.version)
     .run();
   const result = await selectById(db, id);
   if (!result) throw new TokiDataError("not_found", "Session not found");
@@ -335,13 +309,16 @@ export async function discardSession(
   if (session.status !== "awaiting_description") {
     throw new TokiDataError("conflict", "Only an unsaved stopped session can be discarded");
   }
-  await db
-    .prepare(
-      `UPDATE time_sessions
-       SET status = 'discarded', updated_at_ms = ?, version = version + 1
-       WHERE id = ? AND status = 'awaiting_description' AND version = ?`,
+  await drizzle(db)
+    .update(timeSessions)
+    .set({ status: "discarded", updatedAtMs: nowMs, version: sql`${timeSessions.version} + 1` })
+    .where(
+      and(
+        eq(timeSessions.id, id),
+        eq(timeSessions.status, "awaiting_description"),
+        eq(timeSessions.version, session.version),
+      ),
     )
-    .bind(nowMs, id, session.version)
     .run();
   const result = await selectById(db, id);
   if (!result) throw new TokiDataError("not_found", "Session not found");
@@ -360,40 +337,24 @@ export async function createManualRecord(
   requireInterval(input.startedAtMs, input.endedAtMs);
   const description = normalizeDescription(input.description);
   const id = crypto.randomUUID();
-  await db
-    .prepare(
-      `INSERT OR IGNORE INTO time_sessions
+  // Same atomic, parameterized insertion as startSession; see the comment there.
+  await drizzle(db).run(sql`INSERT OR IGNORE INTO ${timeSessions}
        (id, client_request_id, mode, status, started_at_ms, timer_seconds,
         deadline_at_ms, ended_at_ms, description, version, created_at_ms, updated_at_ms)
-       SELECT ?, ?, 'manual', 'saved', ?, NULL, NULL, ?, ?, 1, ?, ?
+       SELECT ${id}, ${input.clientRequestId}, 'manual', 'saved', ${input.startedAtMs}, NULL, NULL, ${input.endedAtMs}, ${description}, 1, ${nowMs}, ${nowMs}
        WHERE NOT EXISTS (
-         SELECT 1 FROM deleted_client_request_ids WHERE client_request_id = ?
-       )`,
-    )
-    .bind(
-      id,
-      input.clientRequestId,
-      input.startedAtMs,
-      input.endedAtMs,
-      description,
-      nowMs,
-      nowMs,
-      input.clientRequestId,
-    )
-    .run();
+         SELECT 1 FROM ${deletedClientRequestIds} WHERE ${deletedClientRequestIds.clientRequestId} = ${input.clientRequestId}
+       )`);
 
-  const row = await db
-    .prepare("SELECT * FROM time_sessions WHERE client_request_id = ?")
-    .bind(input.clientRequestId)
-    .first<SessionRow>();
+  const row = await selectByRequestId(db, input.clientRequestId);
   if (
     row?.mode === "manual" &&
     row.status === "saved" &&
-    row.started_at_ms === input.startedAtMs &&
-    row.ended_at_ms === input.endedAtMs &&
+    row.startedAtMs === input.startedAtMs &&
+    row.endedAtMs === input.endedAtMs &&
     row.description === description
   ) {
-    return rowToSession(row);
+    return row;
   }
   throw new TokiDataError("conflict", "Request ID has already been used");
 }
@@ -410,14 +371,22 @@ export async function editSavedRecord(
   requireInterval(input.startedAtMs, input.endedAtMs);
   requireVersion(input.expectedVersion);
   const description = normalizeDescription(input.description);
-  const update = await db
-    .prepare(
-      `UPDATE time_sessions
-       SET started_at_ms = ?, ended_at_ms = ?, description = ?,
-           updated_at_ms = ?, version = version + 1
-       WHERE id = ? AND status = 'saved' AND version = ?`,
+  const update = await drizzle(db)
+    .update(timeSessions)
+    .set({
+      startedAtMs: input.startedAtMs,
+      endedAtMs: input.endedAtMs,
+      description,
+      updatedAtMs: nowMs,
+      version: sql`${timeSessions.version} + 1`,
+    })
+    .where(
+      and(
+        eq(timeSessions.id, id),
+        savedRecordPredicate,
+        eq(timeSessions.version, input.expectedVersion),
+      ),
     )
-    .bind(input.startedAtMs, input.endedAtMs, description, nowMs, id, input.expectedVersion)
     .run();
   const result = await selectById(db, id);
   if (!result) throw new TokiDataError("not_found", "Record not found");
@@ -435,9 +404,11 @@ export async function deleteSavedRecord(
 ): Promise<void> {
   requireId(id);
   requireVersion(expectedVersion);
-  const deletion = await db
-    .prepare("DELETE FROM time_sessions WHERE id = ? AND status = 'saved' AND version = ?")
-    .bind(id, expectedVersion)
+  const deletion = await drizzle(db)
+    .delete(timeSessions)
+    .where(
+      and(eq(timeSessions.id, id), savedRecordPredicate, eq(timeSessions.version, expectedVersion)),
+    )
     .run();
   // D1 includes the trigger's request-ID insert in its reported change count.
   if (deletion.meta.changes > 0) return;
@@ -456,13 +427,16 @@ export async function listSavedRecords(
   endMs: number,
 ): Promise<TokiSession[]> {
   requireInterval(startMs, endMs);
-  const rows = await db
-    .prepare(
-      `SELECT * FROM time_sessions
-       WHERE status = 'saved' AND started_at_ms < ? AND ended_at_ms > ?
-       ORDER BY started_at_ms ASC, id ASC`,
+  return drizzle(db)
+    .select()
+    .from(timeSessions)
+    .where(
+      and(
+        savedRecordPredicate,
+        lt(timeSessions.startedAtMs, endMs),
+        gt(timeSessions.endedAtMs, startMs),
+      ),
     )
-    .bind(endMs, startMs)
-    .all<SessionRow>();
-  return rows.results.map(rowToSession);
+    .orderBy(asc(timeSessions.startedAtMs), asc(timeSessions.id))
+    .all();
 }

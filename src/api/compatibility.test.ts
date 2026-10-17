@@ -278,6 +278,22 @@ describe("Phase 50 HTTP compatibility with real SQLite and synthetic records", (
     expect(database.sqlite.prepare("SELECT * FROM time_sessions").all()).toEqual([]);
   });
 
+  it("sanitizes Drizzle storage failures without exposing SQL or bound activity text", async () => {
+    database.sqlite.exec(`CREATE TRIGGER synthetic_storage_failure BEFORE INSERT ON time_sessions
+      BEGIN SELECT RAISE(ABORT, 'synthetic database failure'); END;`);
+    await expectJson(
+      await call("/api/v1/records", "POST", {
+        startedAtMs: BASELINE_NOW_MS,
+        endedAtMs: BASELINE_NOW_MS + 1000,
+        description: "synthetic private activity",
+        clientRequestId: REQUEST_ID,
+      }),
+      500,
+      { error: { code: "INTERNAL_ERROR" } },
+    );
+    expect(database.sqlite.prepare("SELECT * FROM time_sessions").all()).toEqual([]);
+  });
+
   it("accepts exactly 4096 body bytes and rejects an oversized or malformed body", async () => {
     const input = JSON.stringify({ mode: "stopwatch", clientRequestId: REQUEST_ID });
     for (const [body, status, code] of [
