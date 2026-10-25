@@ -337,6 +337,28 @@ describe("React calendar and native dialogs", () => {
     await waitFor(() => expect(element("calendar-loading").hidden).toBe(true));
     return result;
   }
+  it("assigns seven calendar color classes without changing content or untagged records", async () => {
+    const untagged = { ...record, id: "untagged", description: "タグなし記録" };
+    const tagged = TIME_TAGS.map((tag, index) => ({
+      ...record,
+      id: `color-${tag.id}`,
+      description: `記録${index}`,
+      startedAtMs: NOW + (index + 1) * 3600000,
+      endedAtMs: NOW + (index + 1) * 3600000 + 1000,
+      tag: tag.id,
+    }));
+    await calendar([untagged, ...tagged]);
+    for (const item of [untagged, ...tagged]) {
+      const event = document.querySelector(`.timeline-event-${item.tag ?? "none"}`);
+      expect(event).not.toBeNull();
+      expect(event?.firstElementChild?.textContent).toBe(item.description);
+      expect(event?.querySelector(".time-tag")?.textContent ?? null).toBe(
+        TIME_TAGS.find((tag) => tag.id === item.tag)?.label ?? null,
+      );
+    }
+    expect(document.querySelectorAll(".timeline-event-none")).toHaveLength(1);
+    expect(fetchMock.mock.calls.every(([, options]) => options?.method === "GET")).toBe(true);
+  });
   it("shows six labeled tag colors beside the content and restores them in edit", async () => {
     const records = TIME_TAGS.map((tag, index) => ({
       ...record,

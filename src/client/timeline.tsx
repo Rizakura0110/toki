@@ -71,7 +71,7 @@ export function Timeline({
                 <button
                   key={item.record.id}
                   type="button"
-                  className="timeline-event"
+                  className={`timeline-event timeline-event-${item.record.tag ?? "none"}`}
                   aria-label={recordLabel(item.record)}
                   title={recordLabel(item.record)}
                   style={{

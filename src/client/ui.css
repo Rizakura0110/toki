@@ -398,31 +398,57 @@ textarea::placeholder {
 }
 .time-tag {
   @apply inline-block min-w-[0] max-w-full rounded-[4px] p-[2px_6px] text-[11px] font-bold text-ellipsis overflow-hidden whitespace-nowrap;
+  background: var(--tag-background);
+  color: var(--tag-foreground);
   line-height: 1.4;
 }
-.time-tag-work {
-  background: #dceafc;
-  color: #204d8b;
+.time-tag-work,
+.timeline-event-work {
+  --tag-background: #dceafc;
+  --tag-foreground: #204d8b;
+  --tag-border: #9bbce6;
+  --tag-hover: #c9defb;
 }
-.time-tag-housework {
-  background: #dceee4;
-  color: #235b3e;
+.time-tag-housework,
+.timeline-event-housework {
+  --tag-background: #dceee4;
+  --tag-foreground: #235b3e;
+  --tag-border: #94bda8;
+  --tag-hover: #c8e5d5;
 }
-.time-tag-self_development {
-  background: #eee1f8;
-  color: #683b88;
+.time-tag-self_development,
+.timeline-event-self_development {
+  --tag-background: #eee1f8;
+  --tag-foreground: #683b88;
+  --tag-border: #baa0cf;
+  --tag-hover: #e1cdf1;
 }
-.time-tag-chores {
-  background: #fff0c5;
-  color: #705100;
+.time-tag-chores,
+.timeline-event-chores {
+  --tag-background: #fff0c5;
+  --tag-foreground: #705100;
+  --tag-border: #d5bd73;
+  --tag-hover: #f9e3a3;
 }
-.time-tag-hobby {
-  background: #fce0eb;
-  color: #913857;
+.time-tag-hobby,
+.timeline-event-hobby {
+  --tag-background: #fce0eb;
+  --tag-foreground: #913857;
+  --tag-border: #dda3ba;
+  --tag-hover: #f7cbdc;
 }
-.time-tag-relaxation {
-  background: #e3e8ee;
-  color: #42556b;
+.time-tag-relaxation,
+.timeline-event-relaxation {
+  --tag-background: #d9f0f4;
+  --tag-foreground: #1d5867;
+  --tag-border: #8fbfc9;
+  --tag-hover: #bfe5ed;
+}
+.timeline-event-none {
+  --tag-background: #e8ebee;
+  --tag-foreground: #43515e;
+  --tag-border: #b4bec7;
+  --tag-hover: #d9dfe5;
 }
 
 .guide-card {
@@ -927,11 +953,11 @@ textarea::placeholder {
   @apply absolute;
   z-index: 1;
   @apply flex flex-col overflow-hidden min-h-[0] p-[3px_6px];
-  border: 1px solid #dfaa91;
-  border-left: 3px solid var(--coral);
+  border: 1px solid var(--tag-border);
+  border-left: 3px solid var(--tag-foreground);
   @apply rounded-[5px];
-  background: #fbe7d9;
-  color: #693a28;
+  background: var(--tag-background);
+  color: var(--tag-foreground);
   line-height: 1.25;
   @apply text-left;
   box-shadow: 0 1px 3px rgba(64, 47, 40, 0.12);
@@ -939,7 +965,7 @@ textarea::placeholder {
 .timeline-event:hover,
 .timeline-event:focus-visible {
   z-index: 4;
-  background: #f7d9c5;
+  background: var(--tag-hover);
 }
 .timeline-event-time {
   @apply min-w-[0] overflow-hidden whitespace-nowrap text-[10px] font-bold;
