@@ -12,7 +12,7 @@ Phase 47では、短時間の記録でも内容が1行見えるように、カ�
 
 Phase 48では、手動の新規登録フォームを分単位（秒は00）にし、内容を任意にしました。手動・ストップウォッチ・タイマーの保存と記録編集で空欄/空白だけを受け付け、保存時に「無題」で補完するため、カレンダーと記録一覧にも「無題」が表示されます。既存記録の編集は引き続き秒単位で、内容だけの編集では元の秒・ミリ秒を保持します。2026-09-27に所有者の承認後、検証済みcommit `bab03ef`をToki Workerへ本番反映しました。認証済みブラウザで分単位・内容任意の手動登録フォームと計測画面を確認し、未認証10経路のAccess保護も検証済みです。DB schema/migration・記録の更新・進行中の計測・認証/料金設定は変更していません。空欄保存と再読み込み後の保持はローカルE2Eで検証し、本番では確認用の記録を保存していません。
 
-2026-10-04に、基盤・Tech Inbox・Daymarkと技術スタックを揃える方針とPhase 49〜56の移行手順を記録しました。Phase 50で比較基準、Phase 51でViteの開発基盤、Phase 52でHono routing、Phase 53でDrizzleによるDB操作を整えました。2026-10-17にPhase 54のReact/TypeScript・React Router・Tailwindへの画面移行と、Phase 55の旧新互換・復元・負荷・設定検証を完了しました。Phase 56は2026-10-25に着手し、直前検証で見つかった依存の脆弱性とテストの日付依存を修正しました。独立repository/Worker/D1、機能・URL・記録・PWAを維持し、本番はまだ更新していません。
+2026-10-04に、基盤・Tech Inbox・Daymarkと技術スタックを揃える方針とPhase 49〜56の移行手順を記録しました。Phase 50で比較基準、Phase 51でViteの開発基盤、Phase 52でHono routing、Phase 53でDrizzleによるDB操作を整えました。2026-10-17にPhase 54のReact/TypeScript・React Router・Tailwindへの画面移行と、Phase 55の旧新互換・復元・負荷・設定検証を完了しました。2026-10-25のPhase 56では、直前検証で見つかった依存の脆弱性とテストの日付依存を修正し、既存Toki Workerへの本番反映と所有者によるPC・iPhone PWAの動作確認を完了しました。独立repository/Worker/D1、機能・URL・記録・PWAは維持しています。
 
 製品仕様とフェーズ計画は基盤repositoryの`docs/toki-design.md`・`docs/toki-roadmap.md`を正とします。このrepositoryへ基盤/Tech Inbox/Daymarkのsourceをコピーしたり、実データやCloudflare資格情報を追加したりしません。
 
@@ -28,17 +28,23 @@ pnpm check
 
 `pnpm check`はformat、lint、生成型、browser/Worker/test/Node別のTypeScript、coverage付きtest、local D1 migrationと`time_sessions`検査、Vite build・成果物検査・Worker dry-run、ローカルChromium E2E、依存監査を実行します。E2Eはbuild済みWorkerとassetsを使い、毎回専用の一時D1、認証バイパスあり・なしの2つのloopback Workerを検証します。Phase 55以降は`release:local`と`e2e:migration`も含みます。Cloudflareのremote DBやWorkerは作成・変更しません。GitHub Actionsも同じgateを使い、deployは行いません。
 
-### Phase 56の直前検証
+### Phase 56の本番反映と実機確認
 
 2026-10-25の再監査でhigh 4・moderate 12・low 1を検出し、Hono `4.13.11`、Zod `4.6.6`、Vite `8.2.4`、Vitest/coverage `4.1.12`、Miniflare配下Undici `7.30.1`、jsdom配下Undici `8.12.2`へ更新しました。公式配布物のSHA-512・公開7日・Node/peer互換を確認し、lockfileの368 entriesのうち対象14件だけを置換しています。その他の依存、供給網policy、install script制限は維持します。
 
 カレンダーのテストは記録fixtureの日付と表示週の基準日を揃え、実行日が変わっても同じ境界を検証します。製品の時計や保存動作は変更しません。更新後の全品質gateは557 tests・PC/320px E2E計39件で成功し、監査はhigh/critical/low 0、既知のDrizzle Kit由来moderate 1件です。既知の古いesbuildのHTTPサーバーは起動しません。
 
-本番更新には、利用可能な資格情報で現在のWorker・Access・無料プラン/利用量を確認し、実データのprivate backupと復元照合を行う必要があります。ローカル検証の成功だけでPhase 56全体を完了とは扱いません。
+2026-10-25、所有者がTerminalからWranglerのブラウザOAuth認証（`--use-keyring`・必要scopeの明示）を行い、検証済みcommit `0f84b72a8c67c229888d20a03616fc69ad4747dd`を既存Toki Workerへ手動deployしました。[GitHub CI 40183667837](https://github.com/Rizakura0110/toki/actions/runs/40183667837)でも新規checkoutから全品質gateが成功した実装です。本番version `b4701d8a-3f2b-4cc4-9145-b4f504050427`の100%稼働と、準備済み成果物のhash不変を確認しました。
+
+反映前に非追跡の私有領域へSQLをexportし、取得前後の全行・全列、削除済みrequest ID、migration履歴、table/index/trigger、整合性の一致を確認しました。さらに空の隔離ローカルD1へ復元して同じ結果を照合しました。本人限定Access・Workers Free・確認時のUsage cost $0は所有者が確認し、公開URLのAccess保護、preview無効、追加domain/routeなしを管理画面で確認しています。反映後のD1接続先・ASSETS・3 secret名・runtime設定は旧versionと一致し、画面・実際のhash付きJS/CSS・manifest・icons・APIの未認証14経路はすべてAccessへredirectしました。
+
+所有者はPCでの表示・保存・編集・再読み込みと、iPhoneの既存PWAでの表示・再起動後の記録保持に問題がないことを確認しました。更新前後の記録差分も所有者自身の操作として確認済みです。URLとPWA identityは同じため追加し直しは不要です。DB migration・本番DB復元・新resource作成・Access/secret/料金設定変更、基盤や他製品のdeployは行っていません。
+
+反映後約11分のWorker集計は8 requests・errors 0で、全statusが`success`でした。CPU P50は1.765ms、P99は35.087msです。P99はFreeの10msより高いため常時上限内とは扱いませんが、上限超過による実行失敗は観測されていません。短期間・少数の結果であり、継続的な超過/1102や保存失敗なら基盤の運用手順に従います。有料監視やプラン変更はしていません。
 
 ### Phase 55の反映前検証
 
-`tests/fixtures/phase48/`は最後に本番反映したcommit `bab03ef5084b980c481b8126fd34b18604c84249`の旧画面・API・DB・認証14ファイルです。改変検出のSHA-256と、変更しないmigration/PWAの9ファイルのhashを検査します。固定sourceは整形・coverageの対象から除き、現行runtimeのcoverage閾値は下げません。旧依存graphは再installせず、現行の検証済みtoolchainでsource互換性を確認します。
+`tests/fixtures/phase48/`は移行前の比較基準となるPhase 48のcommit `bab03ef5084b980c481b8126fd34b18604c84249`の旧画面・API・DB・認証14ファイルです。改変検出のSHA-256と、変更しないmigration/PWAの9ファイルのhashを検査します。固定sourceは整形・coverageの対象から除き、現行runtimeのcoverage閾値は下げません。旧依存graphは再installせず、現行の検証済みtoolchainでsource互換性を確認します。
 
 `pnpm e2e:migration`は旧画面＋新API、新画面＋旧API、旧画面＋旧APIの3構成で、PC 1280pxとスマホ320pxの計18テストを実行します。計測/タイマー/集中表示/再読込、空欄・分入力・秒精度、競合・確認付き削除・再送拒否、manifest/icon/Service Workerなしを実際のローカルD1へ接続して検証します。test専用Workerはloopback HTTPと明示flagだけで動き、本番へ配信しません。
 
@@ -46,7 +52,7 @@ pnpm check
 
 `pnpm release:local`はbuild済みWorkerのraw/gzip 512/128 KiB、browser JS 320/110 KiB、CSS 32/10 KiBを独自予算として検査し、合成D1 IDのstage/live両設定で`deploy --dry-run`を実行します。実際の本番設定や資格情報は読み書きしません。APIの発行query数は通常1〜5、削除済み開始requestの拒否を最大7として検査します。1万件で各300 requestのNode+SQLite CPU比較も行いますが、認証bypassのローカル平均であり、Cloudflareの本番CPUや課金行数を保証しません。
 
-本番直前のprivate SQL export・空のローカルD1での復元照合、active/rollback version ID、本人限定Access・D1 binding・料金/利用量はPhase 56の承認後に取得します。反映と切り戻しの手順は基盤repositoryの`docs/toki-operations.md`を正とし、本番DBの時点復元や新resource作成は今回のWorker反映に含めません。
+本番直前のprivate SQL export・空のローカルD1での復元照合、active/rollback version ID、本人限定Access・D1 binding・料金/利用量は、上記のPhase 56で確認しました。反映と切り戻しの手順は基盤repositoryの`docs/toki-operations.md`を正とし、本番DBの時点復元や新resource作成は今回のWorker反映に含めていません。
 
 必要な場合に限り、`pnpm dev`でbuild後のローカルWorkerを起動できます。Phase 51では本番と同じCSP・認証経路を検証するため、Vite HMRではなくbuild済み成果物を配信します。source編集後は停止・再実行してください。migration・検査・起動のローカルDB保存先をrepository内の`.wrangler/state`へ固定し、再buildで消される`dist`の中には保存しません。`/__local/db`と画面/APIの認証バイパスは明示的なローカル起動引数かつloopback HTTPに限定します。`.dev.vars`や`.env`は追跡しません。本番では画面/APIとも本人限定Accessに加えてWorkerでJWTを検証します。
 
