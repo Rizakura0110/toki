@@ -31,12 +31,12 @@
   "packageManager": "pnpm@11.22.0",
   "dependencies": {
     "drizzle-orm": "0.45.2",
-    "hono": "4.13.7",
+    "hono": "4.13.11",
     "jose": "6.2.9",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-router": "8.3.0",
-    "zod": "4.4.3"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.9",
@@ -50,13 +50,13 @@
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
     "@vitejs/plugin-react": "6.0.5",
-    "@vitest/coverage-v8": "4.1.11",
+    "@vitest/coverage-v8": "4.1.12",
     "drizzle-kit": "0.31.10",
     "jsdom": "30.0.1",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
-    "vite": "8.2.1",
-    "vitest": "4.1.11",
+    "vite": "8.2.4",
+    "vitest": "4.1.12",
     "wrangler": "4.124.0"
   }
 }

@@ -12,7 +12,7 @@ Phase 47では、短時間の記録でも内容が1行見えるように、カ�
 
 Phase 48では、手動の新規登録フォームを分単位（秒は00）にし、内容を任意にしました。手動・ストップウォッチ・タイマーの保存と記録編集で空欄/空白だけを受け付け、保存時に「無題」で補完するため、カレンダーと記録一覧にも「無題」が表示されます。既存記録の編集は引き続き秒単位で、内容だけの編集では元の秒・ミリ秒を保持します。2026-09-27に所有者の承認後、検証済みcommit `bab03ef`をToki Workerへ本番反映しました。認証済みブラウザで分単位・内容任意の手動登録フォームと計測画面を確認し、未認証10経路のAccess保護も検証済みです。DB schema/migration・記録の更新・進行中の計測・認証/料金設定は変更していません。空欄保存と再読み込み後の保持はローカルE2Eで検証し、本番では確認用の記録を保存していません。
 
-2026-10-04に、基盤・Tech Inbox・Daymarkと技術スタックを揃える方針とPhase 49〜56の移行手順を記録しました。Phase 50で比較基準、Phase 51でViteの開発基盤、Phase 52でHono routing、Phase 53でDrizzleによるDB操作を整えました。2026-10-17にPhase 54のReact/TypeScript・React Router・Tailwindへの画面移行を完了しました。Phase 55では旧本番sourceとの組合せ検証、合成データのprivate backup復元予行、成果物/処理負荷の回帰予算と設定dry-runを品質gateへ加えます。独立repository/Worker/D1、機能・URL・記録・PWAを維持し、本番は変更していません。本番反映はPhase 56の別承認後です。
+2026-10-04に、基盤・Tech Inbox・Daymarkと技術スタックを揃える方針とPhase 49〜56の移行手順を記録しました。Phase 50で比較基準、Phase 51でViteの開発基盤、Phase 52でHono routing、Phase 53でDrizzleによるDB操作を整えました。2026-10-17にPhase 54のReact/TypeScript・React Router・Tailwindへの画面移行と、Phase 55の旧新互換・復元・負荷・設定検証を完了しました。Phase 56は2026-10-25に着手し、直前検証で見つかった依存の脆弱性とテストの日付依存を修正しました。独立repository/Worker/D1、機能・URL・記録・PWAを維持し、本番はまだ更新していません。
 
 製品仕様とフェーズ計画は基盤repositoryの`docs/toki-design.md`・`docs/toki-roadmap.md`を正とします。このrepositoryへ基盤/Tech Inbox/Daymarkのsourceをコピーしたり、実データやCloudflare資格情報を追加したりしません。
 
@@ -27,6 +27,14 @@ pnpm check
 ```
 
 `pnpm check`はformat、lint、生成型、browser/Worker/test/Node別のTypeScript、coverage付きtest、local D1 migrationと`time_sessions`検査、Vite build・成果物検査・Worker dry-run、ローカルChromium E2E、依存監査を実行します。E2Eはbuild済みWorkerとassetsを使い、毎回専用の一時D1、認証バイパスあり・なしの2つのloopback Workerを検証します。Phase 55以降は`release:local`と`e2e:migration`も含みます。Cloudflareのremote DBやWorkerは作成・変更しません。GitHub Actionsも同じgateを使い、deployは行いません。
+
+### Phase 56の直前検証
+
+2026-10-25の再監査でhigh 4・moderate 12・low 1を検出し、Hono `4.13.11`、Zod `4.6.6`、Vite `8.2.4`、Vitest/coverage `4.1.12`、Miniflare配下Undici `7.30.1`、jsdom配下Undici `8.12.2`へ更新しました。公式配布物のSHA-512・公開7日・Node/peer互換を確認し、lockfileの368 entriesのうち対象14件だけを置換しています。その他の依存、供給網policy、install script制限は維持します。
+
+カレンダーのテストは記録fixtureの日付と表示週の基準日を揃え、実行日が変わっても同じ境界を検証します。製品の時計や保存動作は変更しません。更新後の全品質gateは557 tests・PC/320px E2E計39件で成功し、監査はhigh/critical/low 0、既知のDrizzle Kit由来moderate 1件です。既知の古いesbuildのHTTPサーバーは起動しません。
+
+本番更新には、利用可能な資格情報で現在のWorker・Access・無料プラン/利用量を確認し、実データのprivate backupと復元照合を行う必要があります。ローカル検証の成功だけでPhase 56全体を完了とは扱いません。
 
 ### Phase 55の反映前検証
 

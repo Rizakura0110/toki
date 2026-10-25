@@ -280,6 +280,10 @@ describe("React measurement lifecycle and routing", () => {
 });
 
 describe("React calendar and native dialogs", () => {
+  beforeEach(() => {
+    // Keep the initial calendar week aligned with the fixed record fixtures.
+    vi.spyOn(Date, "now").mockReturnValue(NOW);
+  });
   async function calendar(records: readonly CalendarRecord[] = [record]) {
     fetchMock.mockImplementation(async () => Response.json({ records }));
     const result = mount("/calendar.html");
