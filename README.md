@@ -30,7 +30,9 @@ Phase 48では、手動の新規登録フォームを分単位（秒は00）に�
 
 新しいブラウザtestの5秒タイマーでローカルProxyWorkerの接続断が再現し、[公式リポジトリの既知報告](https://github.com/cloudflare/workers-sdk/issues/15452)と一致しました。このtestを6秒にし、実DBの5秒満了回帰を別途維持して全gateを再通過しました。製品の時間処理・依存・失敗時挙動は変更していません。
 
-Phase 62の本番反映は対象を明示して所有者承認済みです。私有backup・空のローカルD1への復元/追加migration予行・直前照合を行い、Toki D1へ0003を先に適用してから既存Workerを更新します。新resource・認証/料金設定・DB削除/本番復元は行いません。基盤の`docs/toki-operations.md`に反映順序と切り戻しの境界を記録します。
+Phase 62は2026-10-25に所有者承認後、[CI 40193748795](https://github.com/Rizakura0110/toki/actions/runs/40193748795)成功とcommit/pushを確認し、本番反映しました。sourceは`64df8c6f5cb5d186c20f24a2c123e6dc6dbb5280`、新versionは`00243292-232c-474c-aeda-f4641b04d3cf`（100%）です。私有backup・空のローカルD1への復元/追加migration予行・直前照合後、Toki D1へ0003だけを先に適用し、既存Workerを更新しました。全179行の旧12列と削除履歴2件を保持し、3追加列はNULL、schema/index/trigger/整合性を照合しました。
+
+本番反映前後でDB接続・3 secret名・互換/runtime・公開設定を維持し、匿名の画面/実assets/API14経路のAccess保護を確認しました。新resource・認証/料金設定変更・DB削除/本番復元・検証者による既存記録の新規作成/編集/削除はありません。操作再開後、所有者から依頼したPC/iPhone追加機能の確認済み報告を受領しました。基盤の`docs/toki-operations.md`に反映結果と旧versionへの切り戻し境界を記録しています。
 
 ## ローカル検証
 
