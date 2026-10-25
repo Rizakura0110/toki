@@ -10,9 +10,10 @@ import {
   weekStart,
 } from "./calendar-core";
 import type { CalendarView } from "./calendar-store";
+import { TagBadge, tagLabel } from "./tags";
 
 export function recordLabel(record: CalendarRecord): string {
-  return `${record.description}、${formatTokyoDateTimeInput(record.startedAtMs).replace("T", " ")} から ${formatTokyoDateTimeInput(record.endedAtMs).replace("T", " ")} まで。編集する`;
+  return `${record.description}${record.tag ? `、タグ：${tagLabel(record.tag)}` : ""}、${formatTokyoDateTimeInput(record.startedAtMs).replace("T", " ")} から ${formatTokyoDateTimeInput(record.endedAtMs).replace("T", " ")} まで。編集する`;
 }
 export function Timeline({
   records,
@@ -82,8 +83,11 @@ export function Timeline({
                   onClick={() => edit(item.record.id)}
                 >
                   <span className="timeline-event-title">{item.record.description}</span>
-                  <span className="timeline-event-time">
-                    {`${item.clippedStartMs === range.startMs ? "00:00" : formatTokyoDateTimeInput(item.clippedStartMs).slice(11, 16)}–${item.clippedEndMs === range.endMs ? "24:00" : formatTokyoDateTimeInput(item.clippedEndMs).slice(11, 16)}`}
+                  <span className="timeline-event-meta">
+                    <TagBadge tag={item.record.tag} />
+                    <span className="timeline-event-time">
+                      {`${item.clippedStartMs === range.startMs ? "00:00" : formatTokyoDateTimeInput(item.clippedStartMs).slice(11, 16)}–${item.clippedEndMs === range.endMs ? "24:00" : formatTokyoDateTimeInput(item.clippedEndMs).slice(11, 16)}`}
+                    </span>
                   </span>
                 </button>
               ))}

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TokiDataError } from "../data/records";
-import { handleApiRequest, type ApiBindings } from "./router";
+import { type ApiBindings, handleApiRequest } from "./router";
 
 vi.mock("../data/records", async (importOriginal) => {
   const original = await importOriginal<typeof import("../data/records")>();
@@ -154,7 +154,7 @@ describe("Toki API perimeter", () => {
     );
     expect([stop.status, save.status, discard.status]).toEqual([200, 200, 200]);
     expect(stopSession).toHaveBeenCalledWith(DB, SESSION_ID, expect.any(Number));
-    expect(saveSession).toHaveBeenCalledWith(DB, SESSION_ID, "Work", expect.any(Number));
+    expect(saveSession).toHaveBeenCalledWith(DB, SESSION_ID, "Work", expect.any(Number), undefined);
     expect(discardSession).toHaveBeenCalledWith(DB, SESSION_ID, expect.any(Number));
   });
 

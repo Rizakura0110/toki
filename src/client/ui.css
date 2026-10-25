@@ -381,6 +381,49 @@ textarea::placeholder {
 .description-meta output {
   @apply whitespace-nowrap;
 }
+.start-details {
+  @apply mt-[24px];
+}
+.tag-field {
+  @apply grid gap-[8px] mb-[20px];
+}
+.tag-field label {
+  @apply text-[13px] font-bold;
+}
+.tag-field select {
+  @apply w-full min-h-[44px] p-[8px_12px] rounded-[9px];
+  border: 1px solid #cbd4d0;
+  background: #fff;
+  color: var(--ink);
+}
+.time-tag {
+  @apply inline-block min-w-[0] max-w-full rounded-[4px] p-[2px_6px] text-[11px] font-bold text-ellipsis overflow-hidden whitespace-nowrap;
+  line-height: 1.4;
+}
+.time-tag-work {
+  background: #dceafc;
+  color: #204d8b;
+}
+.time-tag-housework {
+  background: #dceee4;
+  color: #235b3e;
+}
+.time-tag-self_development {
+  background: #eee1f8;
+  color: #683b88;
+}
+.time-tag-chores {
+  background: #fff0c5;
+  color: #705100;
+}
+.time-tag-hobby {
+  background: #fce0eb;
+  color: #913857;
+}
+.time-tag-relaxation {
+  background: #e3e8ee;
+  color: #42556b;
+}
 
 .guide-card {
   @apply p-[32px_28px];
@@ -899,7 +942,13 @@ textarea::placeholder {
   background: #f7d9c5;
 }
 .timeline-event-time {
-  @apply shrink-0 overflow-hidden whitespace-nowrap text-[10px] font-bold;
+  @apply min-w-[0] overflow-hidden whitespace-nowrap text-[10px] font-bold;
+}
+.timeline-event-meta {
+  @apply flex shrink-0 min-w-[0] w-full items-center gap-[4px] mt-[2px];
+}
+.timeline-event-meta .time-tag {
+  @apply flex-none max-w-full p-[1px_3px] text-[10px];
 }
 .timeline-event-title {
   @apply shrink-0 overflow-hidden text-[11px] font-bold text-ellipsis whitespace-nowrap;
@@ -927,13 +976,16 @@ textarea::placeholder {
 .record-main {
   @apply flex min-w-[0] items-center gap-[11px];
 }
+.record-details {
+  @apply flex flex-col min-w-[0] items-start gap-[5px];
+}
 .record-accent {
   @apply w-[8px] h-[8px] flex-none;
   border-radius: 50%;
   background: var(--coral);
 }
 .record-description {
-  @apply overflow-hidden text-[14px] font-bold text-ellipsis whitespace-nowrap;
+  @apply max-w-full overflow-hidden text-[14px] font-bold text-ellipsis whitespace-nowrap;
 }
 .record-time {
   @apply flex-none;

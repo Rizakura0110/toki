@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createBaselineDatabase, insertBaselineRow } from "../../tests/fixtures/local-database";
+import { createCurrentDatabase, insertBaselineRow } from "../../tests/fixtures/local-database";
 import { handleApiRequest as legacy } from "../../tests/fixtures/phase48/src/api/router";
 import { BASELINE_NOW_MS as NOW, savedStopwatch } from "../../tests/fixtures/toki-baseline";
 import { handleApiRequest as modern } from "../api/router";
@@ -55,7 +55,7 @@ function request(path: string, method = "GET", body?: unknown) {
 
 describe("per-request D1 query budgets", () => {
   it("guards success, retry, conflict and deletion paths rather than returned row counts", async () => {
-    const { db, sqlite } = createBaselineDatabase();
+    const { db, sqlite } = createCurrentDatabase();
     const observed = counted(db);
     const bindings = { DB: observed.db, LOCAL_AUTH_BYPASS: "enabled" };
     const check = async (
@@ -76,7 +76,12 @@ describe("per-request D1 query budgets", () => {
     };
     try {
       await check("/api/v1/session", "GET", undefined, 200, 2);
-      const input = { mode: "stopwatch", clientRequestId: crypto.randomUUID() };
+      const input = {
+        mode: "stopwatch",
+        clientRequestId: crypto.randomUUID(),
+        description: "開始前の内容",
+        tag: "work",
+      };
       const { session } = await check("/api/v1/session", "POST", input, 201, 5);
       await check("/api/v1/session", "POST", input, 201, 3);
       await check(
@@ -90,7 +95,7 @@ describe("per-request D1 query budgets", () => {
       const saved = await check(
         `/api/v1/session/${session.id}/save`,
         "POST",
-        { description: "" },
+        { description: "", tag: "hobby" },
         200,
         4,
       );
@@ -114,6 +119,7 @@ describe("per-request D1 query budgets", () => {
         startedAtMs: NOW,
         endedAtMs: NOW + 1_000,
         description: "",
+        tag: "housework",
       };
       const { record } = await check("/api/v1/records", "POST", manual, 201, 2);
       await check("/api/v1/records", "POST", manual, 201, 2);
@@ -124,6 +130,7 @@ describe("per-request D1 query budgets", () => {
           startedAtMs: NOW,
           endedAtMs: NOW + 1_000,
           description: "編集",
+          tag: null,
           expectedVersion: record.version,
         },
         200,
@@ -143,7 +150,7 @@ describe("per-request D1 query budgets", () => {
 });
 
 it("records a bounded local Node CPU regression proxy on 10,000 synthetic records", async () => {
-  const { db, sqlite } = createBaselineDatabase();
+  const { db, sqlite } = createCurrentDatabase();
   try {
     sqlite.exec("BEGIN");
     for (let i = 0; i < 10_000; i++) {

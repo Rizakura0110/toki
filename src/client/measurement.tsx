@@ -1,6 +1,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import type { MeasurementStore } from "./measurement-store";
 import { Header } from "./shared";
+import { TagSelect } from "./tags";
 
 export function MeasurementScreen({ store }: { store: MeasurementStore }) {
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
@@ -81,7 +82,7 @@ export function MeasurementScreen({ store }: { store: MeasurementStore }) {
           <div className="intro">
             <p className="eyebrow">YOUR TIME, YOUR STORY</p>
             <h1>今日の時間を記録する</h1>
-            <p>まずは測る。終わったら、その時間にしたことを残しましょう。</p>
+            <p>その時間にしたことを、始める前でも終わった後でも残せます。</p>
           </div>
 
           <div id="notice" className="message message-success" role="status" hidden={!state.notice}>
@@ -219,6 +220,30 @@ export function MeasurementScreen({ store }: { store: MeasurementStore }) {
                     <p className="field-help">1秒から24時間まで設定できます。</p>
                   </fieldset>
 
+                  <div className="start-details">
+                    <label className="description-label" htmlFor="start-description">
+                      これからすること（任意）
+                    </label>
+                    <textarea
+                      id="start-description"
+                      rows={3}
+                      maxLength={500}
+                      placeholder="例：本を読む、企画を考える、散歩をする"
+                      value={state.description}
+                      disabled={locked}
+                      onChange={(event) => store.setDescription(event.target.value)}
+                    />
+                    <div className="description-meta">
+                      <p>空欄でも開始できます。終了後に変更できます。</p>
+                      <output htmlFor="start-description">{state.description.length} / 500</output>
+                    </div>
+                    <TagSelect
+                      id="start-tag"
+                      value={state.tag}
+                      disabled={locked}
+                      onChange={(tag) => store.setTag(tag)}
+                    />
+                  </div>
                   <button
                     id="start-button"
                     className="button button-primary button-wide"
@@ -340,6 +365,12 @@ export function MeasurementScreen({ store }: { store: MeasurementStore }) {
                       {state.description.length} / 500
                     </output>
                   </div>
+                  <TagSelect
+                    id="description-tag"
+                    value={state.tag}
+                    disabled={locked}
+                    onChange={(tag) => store.setTag(tag)}
+                  />
                   <div className="save-actions">
                     <button
                       id="save-button"
@@ -385,7 +416,7 @@ export function MeasurementScreen({ store }: { store: MeasurementStore }) {
                   <span aria-hidden="true">2</span>
                   <div>
                     <strong>残す</strong>
-                    <p>終わったら、その時間の内容をひと言。</p>
+                    <p>内容やタグは、始める前でも終わった後でも。</p>
                   </div>
                 </li>
                 <li>

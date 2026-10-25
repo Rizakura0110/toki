@@ -1,7 +1,8 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import type { TimeTag } from "../contracts/tags";
 
-// Map the already-applied 0002 schema; these definitions do not migrate the DB.
+// Map migrations through 0003; these definitions do not migrate the DB.
 // The AFTER DELETE tombstone trigger remains authoritative in the SQL migration.
 export const timeSessions = sqliteTable(
   "time_sessions",
@@ -20,6 +21,9 @@ export const timeSessions = sqliteTable(
     version: integer("version").notNull().default(1),
     createdAtMs: integer("created_at_ms").notNull(),
     updatedAtMs: integer("updated_at_ms").notNull(),
+    draftDescription: text("draft_description"),
+    tag: text("tag").$type<TimeTag>(),
+    startTag: text("start_tag").$type<TimeTag>(),
   },
   (table) => [
     uniqueIndex("time_sessions_one_open")
@@ -36,6 +40,18 @@ export const timeSessions = sqliteTable(
     check("version_positive", sql`${table.version} >= 1`),
     check("created_at_ms_nonnegative", sql`${table.createdAtMs} >= 0`),
     check("updated_at_ms_order", sql`${table.updatedAtMs} >= ${table.createdAtMs}`),
+    check(
+      "draft_description_length",
+      sql`${table.draftDescription} IS NULL OR length(${table.draftDescription}) BETWEEN 1 AND 500`,
+    ),
+    check(
+      "tag_values",
+      sql`${table.tag} IS NULL OR ${table.tag} IN ('work', 'housework', 'self_development', 'chores', 'hobby', 'relaxation')`,
+    ),
+    check(
+      "start_tag_values",
+      sql`${table.startTag} IS NULL OR ${table.startTag} IN ('work', 'housework', 'self_development', 'chores', 'hobby', 'relaxation')`,
+    ),
     check(
       "timer_metadata",
       sql`(${table.mode} IN ('stopwatch', 'manual') AND ${table.timerSeconds} IS NULL AND ${table.deadlineAtMs} IS NULL)

@@ -26,6 +26,10 @@ const manualRecordMigration = readFileSync(
   new URL("../../migrations/0002_manual_records.sql", import.meta.url),
   "utf8",
 );
+const sessionDetailsMigration = readFileSync(
+  new URL("../../migrations/0003_session_details.sql", import.meta.url),
+  "utf8",
+);
 const openConnections: DatabaseSync[] = [];
 
 function localDb(
@@ -35,6 +39,7 @@ function localDb(
 ): D1Database {
   sqlite.exec(initialMigration);
   sqlite.exec(manualRecordMigration);
+  sqlite.exec(sessionDetailsMigration);
   openConnections.push(sqlite);
   return {
     prepare(sql: string) {

@@ -19,6 +19,8 @@ describe("browser-only Toki clock presentation", () => {
           endedAtMs: null,
           deadlineAtMs: null,
           timerSeconds: null,
+          draftDescription: null,
+          tag: null,
         },
         8_500,
       ),
@@ -34,6 +36,8 @@ describe("browser-only Toki clock presentation", () => {
       endedAtMs: null,
       deadlineAtMs: 11_000,
       timerSeconds: 10,
+      draftDescription: null,
+      tag: null,
     };
     expect(durationForDisplay(timer, 6_000)).toBe(5_000);
     expect(durationForDisplay(timer, 12_000)).toBe(0);

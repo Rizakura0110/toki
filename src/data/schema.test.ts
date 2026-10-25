@@ -3,7 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import { generateSQLiteDrizzleJson, generateSQLiteMigration } from "drizzle-kit/api";
 import { getTableConfig } from "drizzle-orm/sqlite-core";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { createBaselineDatabase, insertBaselineRow } from "../../tests/fixtures/local-database";
+import { createCurrentDatabase, insertBaselineRow } from "../../tests/fixtures/local-database";
 import {
   type BaselineRow,
   manualRecord,
@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 function databases() {
-  const existing = createBaselineDatabase().sqlite;
+  const existing = createCurrentDatabase().sqlite;
   const generated = new DatabaseSync(":memory:");
   opened.push(existing, generated);
   generated.exec(statements.join(";\n"));
@@ -58,7 +58,7 @@ describe("Phase 53 Drizzle schema matches the existing physical database", () =>
           .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
       expect(indexes(generated)).toEqual(indexes(existing));
     }
-    expect(getTableConfig(timeSessions).checks).toHaveLength(10);
+    expect(getTableConfig(timeSessions).checks).toHaveLength(13);
     // Kit does not model the trigger. Never replace migration history with its output.
     expect(statements.join("\n")).not.toMatch(/\b(?:TRIGGER|DROP|ALTER)\b/iu);
     expect(existing.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger'").all()).toEqual(

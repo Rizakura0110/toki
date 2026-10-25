@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { TIME_TAGS } from "../contracts/tags";
 import { ApiError, readRecords, readSessionEnvelope, requestJson } from "./api";
 import { timerDuration } from "./time";
 
@@ -57,6 +58,33 @@ describe("browser response boundaries", () => {
     expect(readRecords({ records: [] })).toEqual([]);
     for (const mode of ["manual", "timer", "stopwatch"])
       expect(readRecords({ records: [{ ...record, mode }] })[0]?.mode).toBe(mode);
+  });
+  it("normalizes legacy responses to untagged records and empty session drafts", () => {
+    expect(readSessionEnvelope({ session, serverNowMs: 2000 }).session).toMatchObject({
+      draftDescription: null,
+      tag: null,
+    });
+    expect(readRecords({ records: [record] })[0]?.tag).toBeNull();
+  });
+  it.each([null, ...TIME_TAGS.map((tag) => tag.id)])("accepts fixed tag %s", (tag) => {
+    expect(
+      readSessionEnvelope({
+        session: { ...session, tag, draftDescription: "読書" },
+        serverNowMs: 2000,
+      }).session,
+    ).toMatchObject({ tag, draftDescription: "読書" });
+    expect(readRecords({ records: [{ ...record, tag }] })[0]?.tag).toBe(tag);
+  });
+  it.each(["unknown", "", 1, [], ["work"], {}])("rejects unsupported tag %j", (tag) => {
+    expect(() => readSessionEnvelope({ session: { ...session, tag }, serverNowMs: 2000 })).toThrow(
+      "INVALID_RESPONSE",
+    );
+    expect(() => readRecords({ records: [{ ...record, tag }] })).toThrow("INVALID_RESPONSE");
+  });
+  it.each([1, {}, "x".repeat(501)])("rejects invalid server drafts", (draftDescription) => {
+    expect(() =>
+      readSessionEnvelope({ session: { ...session, draftDescription }, serverNowMs: 2000 }),
+    ).toThrow("INVALID_RESPONSE");
   });
   it.each([
     null,

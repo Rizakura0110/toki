@@ -158,7 +158,7 @@ api.post(SESSION_ACTION_PATH, async (context) => {
   if (action === "save") {
     const parsed = saveSessionSchema.safeParse(await parseJson(context.req.raw));
     if (!parsed.success) return error(400, "INVALID_INPUT");
-    const session = await saveSession(db, id, parsed.data.description, nowMs);
+    const session = await saveSession(db, id, parsed.data.description, nowMs, parsed.data.tag);
     return json(200, { session, serverNowMs: nowMs });
   }
   const parsed = await parseJson(context.req.raw);

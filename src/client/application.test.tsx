@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TIME_TAGS } from "../contracts/tags";
 import type { CalendarRecord, MeasurementSession } from "./api";
 import { Application, createStores } from "./application";
 
@@ -16,6 +17,8 @@ const running: MeasurementSession = {
   deadlineAtMs: null,
   endedAtMs: null,
   timerSeconds: null,
+  draftDescription: null,
+  tag: null,
 };
 const stopped: MeasurementSession = { ...running, status: "awaiting_description", endedAtMs: NOW };
 const record: CalendarRecord = {
@@ -26,6 +29,7 @@ const record: CalendarRecord = {
   endedAtMs: NOW + 60000,
   description: "<img src=x onerror=alert(1)>",
   version: 1,
+  tag: null,
 };
 let fetchMock = vi.fn<typeof fetch>();
 let small = false;
@@ -52,7 +56,7 @@ function mount(path = "/", stores = createStores()) {
   );
   return { ...result, stores };
 }
-function element<T extends HTMLElement = HTMLElement>(id: string) {
+function element<T = HTMLElement>(id: string) {
   const node = document.getElementById(id);
   if (!node) throw new Error(`Missing #${id}`);
   return node as T;
@@ -100,6 +104,49 @@ afterEach(() => {
 });
 
 describe("React measurement lifecycle and routing", () => {
+  it("offers only the six tags, pre-fills end content, allows clearing and keeps focus time-only", async () => {
+    const user = userEvent.setup();
+    mount();
+    await ready();
+    expect(
+      within(element("start-tag"))
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["タグなし", ...TIME_TAGS.map((tag) => tag.label)]);
+    await user.type(element("start-description"), "企画");
+    await user.selectOptions(element("start-tag"), "work");
+    fetchMock.mockResolvedValueOnce(
+      envelope({ ...running, draftDescription: "企画", tag: "work" }),
+    );
+    await user.click(element("start-button"));
+    await ready("stop-button");
+    expect(JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body))).toMatchObject({
+      description: "企画",
+      tag: "work",
+    });
+    await user.click(element("enter-focus"));
+    expect(element("focus-view").querySelector(".time-tag")).toBeNull();
+    expect(element("focus-view").textContent).not.toContain("企画");
+    await user.click(element("exit-focus"));
+    fetchMock.mockResolvedValueOnce(
+      envelope({ ...stopped, draftDescription: "企画", tag: "work" }),
+    );
+    await user.click(element("stop-button"));
+    await ready("save-button");
+    expect(element<HTMLTextAreaElement>("description").value).toBe("企画");
+    expect(element<HTMLSelectElement>("description-tag").value).toBe("work");
+    await user.type(element("description"), "と調査");
+    await user.selectOptions(element("description-tag"), "");
+    fetchMock.mockResolvedValueOnce(envelope({ ...stopped, status: "saved" }));
+    await user.click(element("save-button"));
+    await waitFor(() => expect(element("idle-panel").hidden).toBe(false));
+    expect(JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body))).toEqual({
+      description: "企画と調査",
+      tag: null,
+    });
+    expect(element<HTMLTextAreaElement>("start-description").value).toBe("");
+    expect(element<HTMLSelectElement>("start-tag").value).toBe("");
+  });
   it("loads once under StrictMode, navigates without mutations and cleans intervals/listeners", async () => {
     const setInterval = vi.spyOn(window, "setInterval"),
       clearInterval = vi.spyOn(window, "clearInterval");
@@ -290,6 +337,33 @@ describe("React calendar and native dialogs", () => {
     await waitFor(() => expect(element("calendar-loading").hidden).toBe(true));
     return result;
   }
+  it("shows six labeled tag colors beside the content and restores them in edit", async () => {
+    const records = TIME_TAGS.map((tag, index) => ({
+      ...record,
+      id: `tag-${tag.id}`,
+      description: `短い記録${index}`,
+      startedAtMs: NOW + index * 3600000,
+      endedAtMs: NOW + index * 3600000 + 1000,
+      tag: tag.id,
+    }));
+    await calendar(records);
+    for (const tag of TIME_TAGS) {
+      expect(document.querySelectorAll(`.time-tag-${tag.id}`)).toHaveLength(2);
+      expect(screen.getAllByText(tag.label).length).toBeGreaterThanOrEqual(2);
+    }
+    for (const event of document.querySelectorAll(".timeline-event")) {
+      expect(event.firstElementChild?.className).toBe("timeline-event-title");
+      expect(event.getAttribute("aria-label")).toContain("タグ：");
+    }
+    const user = userEvent.setup();
+    await user.click(document.querySelector(".record-button") as HTMLElement);
+    expect(element<HTMLSelectElement>("edit-tag").value).toBe("work");
+    await user.selectOptions(element("edit-tag"), "chores");
+    fetchMock.mockResolvedValueOnce(Response.json({}));
+    await user.click(element("edit-save"));
+    const request = fetchMock.mock.calls.find(([, options]) => options?.method === "PATCH");
+    expect(JSON.parse(String(request?.[1]?.body)).tag).toBe("chores");
+  });
   it("renders escaped text, week/day geometry, date navigation and resize with cleanup", async () => {
     const { stores, unmount } = await calendar(),
       user = userEvent.setup();
@@ -352,6 +426,7 @@ describe("React calendar and native dialogs", () => {
       start: "2026-10-17T12:00",
       end: "2026-10-17T12:02",
       description: "updated",
+      tag: null,
     });
     fetchMock.mockResolvedValueOnce(Response.json({}));
     await user.click(element("edit-save"));
@@ -390,10 +465,14 @@ describe("React calendar and native dialogs", () => {
     fireEvent.change(element("create-start"), { target: { value: "2042-01-15T09:00" } });
     fireEvent.change(element("create-end"), { target: { value: "2042-01-15T10:00" } });
     fireEvent.change(element("create-description"), { target: { value: "" } });
+    await user.selectOptions(element("create-tag"), "relaxation");
     fetchMock.mockRejectedValueOnce(new Error("lost"));
     await user.click(element("create-save"));
     await waitFor(() => expect(element("create-save").textContent).toBe("同じ内容で再試行"));
     expect(element<HTMLInputElement>("create-start").disabled).toBe(true);
+    expect(element<HTMLSelectElement>("create-tag").disabled).toBe(true);
+    const sent = fetchMock.mock.calls.find(([, options]) => options?.method === "POST");
+    expect(JSON.parse(String(sent?.[1]?.body)).tag).toBe("relaxation");
     fetchMock.mockResolvedValueOnce(Response.json({}));
     await user.click(element("create-save"));
     await waitFor(() => expect(element<HTMLDialogElement>("create-dialog").open).toBe(false));

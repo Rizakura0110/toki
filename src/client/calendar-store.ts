@@ -1,3 +1,4 @@
+import type { TimeTag } from "../contracts/tags";
 import { ApiError, type CalendarRecord, readRecords, requestJson } from "./api";
 import {
   addDays,
@@ -20,11 +21,13 @@ interface Fields {
   readonly start: string;
   readonly end: string;
   readonly description: string;
+  readonly tag: TimeTag | null;
 }
 interface CreatePayload {
   readonly startedAtMs: number;
   readonly endedAtMs: number;
   readonly description: string;
+  readonly tag?: TimeTag;
   readonly clientRequestId: string;
 }
 interface CalendarState {
@@ -68,7 +71,7 @@ function failureMessage(cause: unknown, fallback: string) {
   }
   return fallback;
 }
-const emptyFields = { start: "", end: "", description: "" };
+const emptyFields: Fields = { start: "", end: "", description: "", tag: null };
 export class CalendarStore extends Store<CalendarState> {
   private requestNumber = 0;
   private reading: { key: string; promise: Promise<void> } | null = null;
@@ -168,13 +171,14 @@ export class CalendarStore extends Store<CalendarState> {
         start: formatTokyoDateTimeInput(record.startedAtMs),
         end: formatTokyoDateTimeInput(record.endedAtMs),
         description: record.description,
+        tag: record.tag,
       },
       confirmingDelete: false,
       editError: "",
       editMustReload: false,
     });
   }
-  setEdit(field: keyof Fields, value: string) {
+  setEdit<Key extends keyof Fields>(field: Key, value: Fields[Key]) {
     this.patch({ edit: { ...this.state.edit, [field]: value } });
   }
   closeEdit() {
@@ -226,6 +230,9 @@ export class CalendarStore extends Store<CalendarState> {
         startedAtMs: start,
         endedAtMs: end,
         description,
+        ...(this.state.edit.tag !== null || record.tag !== null
+          ? { tag: this.state.edit.tag }
+          : {}),
         expectedVersion: record.version,
       });
       this.patch({ editing: null, notice: "記録を更新しました。" });
@@ -283,6 +290,7 @@ export class CalendarStore extends Store<CalendarState> {
         start: formatTokyoMinuteInput(start),
         end: formatTokyoMinuteInput(start + 3600000),
         description: "",
+        tag: null,
       },
       createRetryPayload: null,
       createError: "",
@@ -290,7 +298,7 @@ export class CalendarStore extends Store<CalendarState> {
       createCanReload: false,
     });
   }
-  setCreate(field: keyof Fields, value: string) {
+  setCreate<Key extends keyof Fields>(field: Key, value: Fields[Key]) {
     if (!this.state.createBusy && !this.state.createRetryPayload && !this.state.createMustReload)
       this.patch({ create: { ...this.state.create, [field]: value } });
   }
@@ -346,6 +354,7 @@ export class CalendarStore extends Store<CalendarState> {
         startedAtMs: start,
         endedAtMs: end,
         description,
+        ...(this.state.create.tag !== null ? { tag: this.state.create.tag } : {}),
         clientRequestId: this.createRequestId,
       };
     }

@@ -1,3 +1,4 @@
+import type { TimeTag } from "../contracts/tags";
 import {
   ApiError,
   type MeasurementMode,
@@ -26,6 +27,7 @@ interface MeasurementState {
   readonly mode: MeasurementMode;
   readonly timer: readonly [string, string, string];
   readonly description: string;
+  readonly tag: TimeTag | null;
   readonly time: string;
 }
 function failureMessage(cause: unknown, fallback: string) {
@@ -46,6 +48,8 @@ export class MeasurementStore extends Store<MeasurementState> {
     clientRequestId: string;
     mode: MeasurementMode;
     timerSeconds: number | null;
+    description: string;
+    tag: TimeTag | null;
   } | null = null;
   private pendingResolutionAction: "save" | "discard" | null = null;
   constructor() {
@@ -61,6 +65,7 @@ export class MeasurementStore extends Store<MeasurementState> {
       mode: "stopwatch",
       timer: ["0", "25", "0"],
       description: "",
+      tag: null,
       time: "00:00:00",
     });
   }
@@ -74,6 +79,9 @@ export class MeasurementStore extends Store<MeasurementState> {
   }
   setDescription(description: string) {
     this.patch({ description, ...(!this.state.errorRequiresSync ? { error: "" } : {}) });
+  }
+  setTag(tag: TimeTag | null) {
+    this.patch({ tag, ...(!this.state.errorRequiresSync ? { error: "" } : {}) });
   }
   setFocus(focus: boolean) {
     if (!focus || (this.state.session?.status === "running" && !this.state.busy))
@@ -94,7 +102,12 @@ export class MeasurementStore extends Store<MeasurementState> {
     this.patch({
       session: envelope.session,
       focus: this.state.focus && envelope.session?.status === "running",
-      description: previous?.id !== envelope.session?.id ? "" : this.state.description,
+      ...(previous?.id !== envelope.session?.id
+        ? {
+            description: envelope.session?.draftDescription ?? "",
+            tag: envelope.session?.tag ?? null,
+          }
+        : {}),
     });
     this.tick();
   }
@@ -161,7 +174,7 @@ export class MeasurementStore extends Store<MeasurementState> {
       const envelope = readSessionEnvelope(await requestJson(path, "POST", body));
       this.accept(envelope, started);
       if (envelope.session?.status === "saved" || envelope.session?.status === "discarded")
-        this.patch({ session: null, focus: false });
+        this.patch({ session: null, focus: false, description: "", tag: null });
       this.pendingResolutionAction = null;
       this.patch({ notice });
     } catch (cause) {
@@ -189,7 +202,16 @@ export class MeasurementStore extends Store<MeasurementState> {
   }
   start = async () => {
     if (this.state.busy || this.state.uncertain) return;
-    const { mode } = this.state;
+    const { mode, tag } = this.state;
+    const description = this.state.description.trim();
+    if (description.length > 500) {
+      this.patch({
+        error: "内容は500文字以内で入力してください。",
+        errorRequiresSync: false,
+        notice: "",
+      });
+      return;
+    }
     const timerSeconds = mode === "timer" ? timerDuration(this.state.timer) : null;
     if (mode === "timer" && timerSeconds === null) {
       this.patch({
@@ -202,13 +224,24 @@ export class MeasurementStore extends Store<MeasurementState> {
     if (
       !this.pendingStart ||
       this.pendingStart.mode !== mode ||
-      this.pendingStart.timerSeconds !== timerSeconds
+      this.pendingStart.timerSeconds !== timerSeconds ||
+      this.pendingStart.description !== description ||
+      this.pendingStart.tag !== tag
     )
-      this.pendingStart = { clientRequestId: crypto.randomUUID(), mode, timerSeconds };
-    const body =
-      mode === "timer"
-        ? { mode, timerSeconds, clientRequestId: this.pendingStart.clientRequestId }
-        : { mode, clientRequestId: this.pendingStart.clientRequestId };
+      this.pendingStart = {
+        clientRequestId: crypto.randomUUID(),
+        mode,
+        timerSeconds,
+        description,
+        tag,
+      };
+    const body = {
+      mode,
+      ...(mode === "timer" ? { timerSeconds } : {}),
+      ...(description ? { description } : {}),
+      ...(tag ? { tag } : {}),
+      clientRequestId: this.pendingStart.clientRequestId,
+    };
     await this.mutate("/api/v1/session", body, "計測を始めました。");
   };
   stop = async () => {
@@ -234,7 +267,12 @@ export class MeasurementStore extends Store<MeasurementState> {
     }
     await this.mutate(
       `/api/v1/session/${encodeURIComponent(id)}/save`,
-      { description },
+      {
+        description,
+        ...(this.state.tag !== null || this.state.session?.tag !== null
+          ? { tag: this.state.tag }
+          : {}),
+      },
       "記録を保存しました。",
     );
   };

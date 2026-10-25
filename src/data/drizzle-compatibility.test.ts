@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { getPlatformProxy, type PlatformProxy } from "wrangler";
-import { createBaselineDatabase } from "../../tests/fixtures/local-database";
+import { createCurrentDatabase } from "../../tests/fixtures/local-database";
 import * as legacy from "../../tests/fixtures/phase52-records";
 import {
   type BaselineRow,
@@ -21,7 +21,7 @@ import {
 import * as modern from "./records";
 
 type Repository = Pick<
-  typeof modern,
+  typeof legacy,
   | "getCurrentSession"
   | "getSession"
   | "startSession"
@@ -208,6 +208,7 @@ async function scenario(repository: Repository, raw: D1Database) {
         currentSession: "currentSession" in error ? error.currentSession : undefined,
       };
     }
+    if (repository === modern) result = legacyResult(result);
     steps.push({ result, queries: queries.length - before, rows: await contents(raw) });
     return result as modern.TokiSession;
   }
@@ -267,11 +268,75 @@ async function scenario(repository: Repository, raw: D1Database) {
   }
 }
 
+/** Assert and remove only the intentional additive defaults, never hide old-field changes. */
+function legacyResult(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(legacyResult);
+  if (!value || typeof value !== "object") return value;
+  const result = { ...value } as Record<string, unknown>;
+  if ("clientRequestId" in result) {
+    expect(result.draftDescription).toBeNull();
+    expect(result.tag).toBeNull();
+    expect(result).not.toHaveProperty("startTag");
+    delete result.draftDescription;
+    delete result.tag;
+  }
+  if ("currentSession" in result) result.currentSession = legacyResult(result.currentSession);
+  return result;
+}
+
 describe("Phase 53 pre-Drizzle equivalence on SQLite and real local D1", () => {
+  it("expires a tagged timer after a real idle interval while a changed-tag stopwatch record exists", async () => {
+    await reset(d1);
+    const startedAt = Date.now();
+    const stopwatch = await modern.startSession(
+      d1,
+      {
+        mode: "stopwatch",
+        clientRequestId: crypto.randomUUID(),
+        description: "開始前の予定",
+        tag: "work",
+      },
+      startedAt,
+    );
+    await modern.stopSession(d1, stopwatch.id, startedAt + 1);
+    const saved = await modern.saveSession(
+      d1,
+      stopwatch.id,
+      "PCstopwatchの実績",
+      startedAt + 2,
+      "self_development",
+    );
+    const timer = await modern.startSession(
+      d1,
+      {
+        mode: "timer",
+        timerSeconds: 5,
+        clientRequestId: crypto.randomUUID(),
+        description: "開始前の予定",
+        tag: "work",
+      },
+      Date.now(),
+    );
+    expect(await modern.getCurrentSession(d1, Date.now())).toMatchObject({
+      id: timer.id,
+      status: "running",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5100));
+    expect(await modern.getCurrentSession(d1, Date.now())).toMatchObject({
+      id: timer.id,
+      status: "awaiting_description",
+      endedAtMs: timer.deadlineAtMs,
+      description: null,
+      draftDescription: "開始前の予定",
+      tag: "work",
+    });
+    expect(await modern.listSavedRecords(d1, startedAt, Date.now())).toEqual([saved]);
+  }, 15_000);
+
   it.each(["SQLite", "D1"])(
     "keeps all outcomes, rows and per-operation query counts on %s",
     async (driver) => {
-      const sqlite = driver === "SQLite" ? createBaselineDatabase() : undefined;
+      const sqlite = driver === "SQLite" ? createCurrentDatabase() : undefined;
       const db = sqlite?.db ?? d1;
       try {
         const previous = await scenario(legacy, db);
@@ -318,7 +383,7 @@ describe("Phase 53 pre-Drizzle equivalence on SQLite and real local D1", () => {
       await reset(d1, rows);
       const before = await contents(d1);
       const previous = await legacy.getCurrentSession(d1, NOW);
-      expect(await modern.getCurrentSession(d1, NOW)).toEqual(previous);
+      expect(legacyResult(await modern.getCurrentSession(d1, NOW))).toEqual(previous);
       expect(previous).toEqual(expectedSession(row));
       expect(await contents(d1)).toEqual(before);
     },

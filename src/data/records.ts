@@ -1,6 +1,7 @@
 /** D1-backed measurement sessions and the saved records derived from them. */
-import { and, asc, eq, gt, lt, lte, sql } from "drizzle-orm";
+import { and, asc, eq, getTableColumns, gt, lt, lte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
+import { isTimeTag, type TimeTag } from "../contracts/tags";
 import {
   deletedClientRequestIds,
   openSessionPredicate,
@@ -15,7 +16,13 @@ export const MAX_DESCRIPTION_LENGTH = 500;
 export type SessionMode = TokiSession["mode"];
 export type MeasurementMode = Exclude<SessionMode, "manual">;
 export type SessionStatus = TokiSession["status"];
-export type TokiSession = Readonly<typeof timeSessions.$inferSelect>;
+type SessionRow = Readonly<typeof timeSessions.$inferSelect>;
+export type TokiSession = Omit<SessionRow, "startTag">;
+const { startTag: _startTag, ...sessionColumns } = getTableColumns(timeSessions);
+
+function publicSession({ startTag: _startTag, ...session }: SessionRow): TokiSession {
+  return session;
+}
 
 export type TokiDataErrorCode = "validation" | "conflict" | "not_found";
 
@@ -35,6 +42,8 @@ export interface StartSessionInput {
   readonly mode: MeasurementMode;
   readonly timerSeconds?: number;
   readonly clientRequestId: string;
+  readonly description?: string | undefined;
+  readonly tag?: TimeTag | null | undefined;
 }
 
 export interface CreateManualRecordInput {
@@ -42,6 +51,7 @@ export interface CreateManualRecordInput {
   readonly endedAtMs: number;
   readonly description: string;
   readonly clientRequestId: string;
+  readonly tag?: TimeTag | null | undefined;
 }
 
 export interface EditSavedRecordInput {
@@ -49,6 +59,7 @@ export interface EditSavedRecordInput {
   readonly endedAtMs: number;
   readonly description: string;
   readonly expectedVersion: number;
+  readonly tag?: TimeTag | null | undefined;
 }
 
 function validInstant(value: number): boolean {
@@ -77,6 +88,19 @@ function normalizeDescription(value: string): string {
   }
   // Keep the existing saved-record DB constraint and old clients compatible.
   return description || "無題";
+}
+
+function normalizeDraftDescription(value: string | undefined): string | null {
+  if (value === undefined) return null;
+  // Reuse validation, but an empty start must remain an empty draft, not "無題".
+  normalizeDescription(value);
+  return value.trim() || null;
+}
+
+function normalizeTag(value: TimeTag | null | undefined): TimeTag | null {
+  if (value === undefined || value === null) return null;
+  if (!isTimeTag(value)) throw new TokiDataError("validation", "Invalid time tag");
+  return value;
 }
 
 function requireInterval(startedAtMs: number, endedAtMs: number): void {
@@ -121,12 +145,16 @@ function requireStartInput(input: StartSessionInput, nowMs: number): void {
 
 async function selectById(db: D1Database, id: string): Promise<TokiSession | null> {
   return (
-    (await drizzle(db).select().from(timeSessions).where(eq(timeSessions.id, id)).limit(1).get()) ??
-    null
+    (await drizzle(db)
+      .select(sessionColumns)
+      .from(timeSessions)
+      .where(eq(timeSessions.id, id))
+      .limit(1)
+      .get()) ?? null
   );
 }
 
-async function selectByRequestId(db: D1Database, requestId: string): Promise<TokiSession | null> {
+async function selectByRequestId(db: D1Database, requestId: string): Promise<SessionRow | null> {
   return (
     (await drizzle(db)
       .select()
@@ -165,8 +193,12 @@ export async function getCurrentSession(
   requireNow(nowMs);
   await materializeExpiredTimer(db, nowMs);
   return (
-    (await drizzle(db).select().from(timeSessions).where(openSessionPredicate).limit(1).get()) ??
-    null
+    (await drizzle(db)
+      .select(sessionColumns)
+      .from(timeSessions)
+      .where(openSessionPredicate)
+      .limit(1)
+      .get()) ?? null
   );
 }
 
@@ -188,13 +220,20 @@ export async function startSession(
   nowMs: number,
 ): Promise<TokiSession> {
   requireStartInput(input, nowMs);
+  const draftDescription = normalizeDraftDescription(input.description);
+  const tag = normalizeTag(input.tag);
+  const matchesStart = (row: SessionRow) =>
+    row.mode === input.mode &&
+    row.timerSeconds === (input.timerSeconds ?? null) &&
+    row.draftDescription === draftDescription &&
+    row.startTag === tag;
   const current = await getCurrentSession(db, nowMs);
   const existing = await selectByRequestId(db, input.clientRequestId);
   if (existing) {
-    if (existing.mode !== input.mode || existing.timerSeconds !== (input.timerSeconds ?? null)) {
+    if (!matchesStart(existing)) {
       throw new TokiDataError("conflict", "Request ID was used with different settings");
     }
-    return existing;
+    return publicSession(existing);
   }
 
   if (current) {
@@ -209,18 +248,19 @@ export async function startSession(
   // Drizzle's bound SQL preserves the old conflict semantics, including CHECK.
   await drizzle(db).run(sql`INSERT OR IGNORE INTO ${timeSessions}
        (id, client_request_id, mode, status, started_at_ms, timer_seconds,
-        deadline_at_ms, ended_at_ms, description, version, created_at_ms, updated_at_ms)
-       SELECT ${id}, ${input.clientRequestId}, ${input.mode}, 'running', ${nowMs}, ${timerSeconds}, ${deadlineAtMs}, NULL, NULL, 1, ${nowMs}, ${nowMs}
+        deadline_at_ms, ended_at_ms, description, version, created_at_ms, updated_at_ms,
+        draft_description, tag, start_tag)
+       SELECT ${id}, ${input.clientRequestId}, ${input.mode}, 'running', ${nowMs}, ${timerSeconds}, ${deadlineAtMs}, NULL, NULL, 1, ${nowMs}, ${nowMs}, ${draftDescription}, ${tag}, ${tag}
        WHERE NOT EXISTS (
          SELECT 1 FROM ${deletedClientRequestIds} WHERE ${deletedClientRequestIds.clientRequestId} = ${input.clientRequestId}
        )`);
 
   const result = await selectByRequestId(db, input.clientRequestId);
   if (result) {
-    if (result.mode !== input.mode || result.timerSeconds !== timerSeconds) {
+    if (!matchesStart(result)) {
       throw new TokiDataError("conflict", "Request ID was used with different settings");
     }
-    return result;
+    return publicSession(result);
   }
   throw new TokiDataError(
     "conflict",
@@ -267,11 +307,15 @@ export async function saveSession(
   id: string,
   descriptionInput: string,
   nowMs: number,
+  tagInput?: TimeTag | null,
 ): Promise<TokiSession> {
   const description = normalizeDescription(descriptionInput);
+  const normalizedTag = normalizeTag(tagInput);
   const session = await getSession(db, id, nowMs);
   if (!session) throw new TokiDataError("not_found", "Session not found");
-  if (session.status === "saved" && session.description === description) return session;
+  const tag = tagInput === undefined ? session.tag : normalizedTag;
+  if (session.status === "saved" && session.description === description && session.tag === tag)
+    return session;
   if (session.status !== "awaiting_description" || session.endedAtMs === null) {
     throw new TokiDataError("conflict", "Session is not awaiting a description");
   }
@@ -281,6 +325,7 @@ export async function saveSession(
     .set({
       status: "saved",
       description,
+      tag,
       updatedAtMs: nowMs,
       version: sql`${timeSessions.version} + 1`,
     })
@@ -294,7 +339,8 @@ export async function saveSession(
     .run();
   const result = await selectById(db, id);
   if (!result) throw new TokiDataError("not_found", "Session not found");
-  if (result.status === "saved" && result.description === description) return result;
+  if (result.status === "saved" && result.description === description && result.tag === tag)
+    return result;
   throw new TokiDataError("conflict", "Session state changed");
 }
 
@@ -336,12 +382,13 @@ export async function createManualRecord(
   requireId(input.clientRequestId);
   requireInterval(input.startedAtMs, input.endedAtMs);
   const description = normalizeDescription(input.description);
+  const tag = normalizeTag(input.tag);
   const id = crypto.randomUUID();
   // Same atomic, parameterized insertion as startSession; see the comment there.
   await drizzle(db).run(sql`INSERT OR IGNORE INTO ${timeSessions}
        (id, client_request_id, mode, status, started_at_ms, timer_seconds,
-        deadline_at_ms, ended_at_ms, description, version, created_at_ms, updated_at_ms)
-       SELECT ${id}, ${input.clientRequestId}, 'manual', 'saved', ${input.startedAtMs}, NULL, NULL, ${input.endedAtMs}, ${description}, 1, ${nowMs}, ${nowMs}
+        deadline_at_ms, ended_at_ms, description, version, created_at_ms, updated_at_ms, tag)
+       SELECT ${id}, ${input.clientRequestId}, 'manual', 'saved', ${input.startedAtMs}, NULL, NULL, ${input.endedAtMs}, ${description}, 1, ${nowMs}, ${nowMs}, ${tag}
        WHERE NOT EXISTS (
          SELECT 1 FROM ${deletedClientRequestIds} WHERE ${deletedClientRequestIds.clientRequestId} = ${input.clientRequestId}
        )`);
@@ -352,9 +399,10 @@ export async function createManualRecord(
     row.status === "saved" &&
     row.startedAtMs === input.startedAtMs &&
     row.endedAtMs === input.endedAtMs &&
-    row.description === description
+    row.description === description &&
+    row.tag === tag
   ) {
-    return row;
+    return publicSession(row);
   }
   throw new TokiDataError("conflict", "Request ID has already been used");
 }
@@ -371,12 +419,14 @@ export async function editSavedRecord(
   requireInterval(input.startedAtMs, input.endedAtMs);
   requireVersion(input.expectedVersion);
   const description = normalizeDescription(input.description);
+  const tag = normalizeTag(input.tag);
   const update = await drizzle(db)
     .update(timeSessions)
     .set({
       startedAtMs: input.startedAtMs,
       endedAtMs: input.endedAtMs,
       description,
+      ...(input.tag === undefined ? {} : { tag }),
       updatedAtMs: nowMs,
       version: sql`${timeSessions.version} + 1`,
     })
@@ -428,7 +478,7 @@ export async function listSavedRecords(
 ): Promise<TokiSession[]> {
   requireInterval(startMs, endMs);
   return drizzle(db)
-    .select()
+    .select(sessionColumns)
     .from(timeSessions)
     .where(
       and(

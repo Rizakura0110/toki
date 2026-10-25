@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TIME_TAGS } from "../contracts/tags";
 import type { CalendarRecord, MeasurementSession } from "./api";
 import { dayRange, formatTokyoDateTimeInput, tokyoDateKey } from "./calendar-core";
 import { availableDate, CalendarStore } from "./calendar-store";
@@ -13,6 +14,8 @@ const running: MeasurementSession = {
   deadlineAtMs: null,
   endedAtMs: null,
   timerSeconds: null,
+  draftDescription: null,
+  tag: null,
 };
 const stopped: MeasurementSession = { ...running, status: "awaiting_description", endedAtMs: NOW };
 const record: CalendarRecord = {
@@ -23,6 +26,7 @@ const record: CalendarRecord = {
   endedAtMs: NOW + 10123,
   description: "記録",
   version: 2,
+  tag: null,
 };
 let fetchMock = vi.fn<typeof fetch>();
 function envelope(session: MeasurementSession | null = null) {
@@ -54,6 +58,91 @@ afterEach(() => {
 });
 
 describe("measurement state independent of React lifecycles", () => {
+  it.each(["stopwatch", "timer"] as const)(
+    "starts %s with optional content and tag, restores after restart, and keeps final edits on refresh",
+    async (mode) => {
+      const store = new MeasurementStore();
+      store.setMode(mode);
+      store.setDescription("  読書  ");
+      store.setTag("self_development");
+      const active: MeasurementSession = {
+        ...running,
+        mode,
+        ...(mode === "timer" ? { deadlineAtMs: NOW + 1500000, timerSeconds: 1500 } : {}),
+        draftDescription: "読書",
+        tag: "self_development",
+      };
+      fetchMock.mockResolvedValueOnce(envelope(active));
+      await store.start();
+      expect(body()).toMatchObject({ mode, description: "読書", tag: "self_development" });
+      expect(store.getSnapshot()).toMatchObject({ description: "読書", tag: "self_development" });
+      const resumed = new MeasurementStore();
+      fetchMock.mockResolvedValueOnce(envelope(active));
+      await resumed.refresh();
+      expect(resumed.getSnapshot()).toMatchObject({ description: "読書", tag: "self_development" });
+      const finished = { ...active, status: "awaiting_description" as const, endedAtMs: NOW };
+      fetchMock.mockResolvedValueOnce(envelope(finished));
+      await resumed.stop();
+      resumed.setDescription("読書とメモ");
+      resumed.setTag("hobby");
+      fetchMock.mockResolvedValueOnce(envelope(finished));
+      await resumed.refresh();
+      expect(resumed.getSnapshot()).toMatchObject({ description: "読書とメモ", tag: "hobby" });
+      resumed.setTag(null);
+      fetchMock.mockResolvedValueOnce(envelope({ ...finished, status: "saved", tag: null }));
+      await resumed.save();
+      expect(body()).toEqual({ description: "読書とメモ", tag: null });
+      expect(resumed.getSnapshot()).toMatchObject({ session: null, description: "", tag: null });
+    },
+  );
+  it("restores an already-finished session with its start content and resets only for another session", async () => {
+    const store = new MeasurementStore();
+    fetchMock.mockResolvedValueOnce(
+      envelope({ ...stopped, draftDescription: "掃除", tag: "housework" }),
+    );
+    await store.refresh();
+    expect(store.getSnapshot()).toMatchObject({ description: "掃除", tag: "housework" });
+    store.setTag("chores");
+    fetchMock.mockResolvedValueOnce(
+      envelope({ ...stopped, id: "new", draftDescription: "仕事", tag: "work" }),
+    );
+    await store.refresh();
+    expect(store.getSnapshot()).toMatchObject({ description: "仕事", tag: "work" });
+    fetchMock.mockResolvedValueOnce(envelope({ ...stopped, id: "new", status: "discarded" }));
+    await store.discard();
+    expect(store.getSnapshot()).toMatchObject({ description: "", tag: null });
+  });
+  it("uses a fresh start key when content or tag changes after an uncertain attempt", async () => {
+    const store = new MeasurementStore();
+    store.setDescription("初期");
+    store.setTag("work");
+    fetchMock.mockRejectedValueOnce(new Error("lost")).mockResolvedValueOnce(envelope());
+    await store.start();
+    const initial = body();
+    await store.refresh();
+    fetchMock.mockRejectedValueOnce(new Error("lost")).mockResolvedValueOnce(envelope());
+    await store.start();
+    expect(body()).toEqual(initial);
+    await store.refresh();
+    store.setDescription("変更");
+    fetchMock.mockRejectedValueOnce(new Error("lost")).mockResolvedValueOnce(envelope());
+    await store.start();
+    const changed = body();
+    expect(changed.clientRequestId).not.toBe(initial.clientRequestId);
+    await store.refresh();
+    store.setTag(null);
+    fetchMock.mockResolvedValueOnce(envelope(running));
+    await store.start();
+    expect(body().clientRequestId).not.toBe(changed.clientRequestId);
+    expect(body()).not.toHaveProperty("tag");
+  });
+  it("rejects oversized start content locally", async () => {
+    const store = new MeasurementStore();
+    store.setDescription("x".repeat(501));
+    await store.start();
+    expect(store.getSnapshot().error).toContain("500文字");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it("has side-effect-free construction, stable snapshots and removable subscribers", async () => {
     const store = new MeasurementStore(),
       changed = vi.fn();
@@ -118,6 +207,8 @@ describe("measurement state independent of React lifecycles", () => {
         timerSeconds: 1,
         startedAtMs: NOW,
         deadlineAtMs: NOW + 1000,
+        draftDescription: "集中",
+        tag: "work",
       };
     fetchMock
       .mockResolvedValueOnce(envelope(timer))
@@ -134,6 +225,8 @@ describe("measurement state independent of React lifecycles", () => {
     expect(store.getSnapshot()).toMatchObject({
       focus: false,
       session: { status: "awaiting_description" },
+      description: "集中",
+      tag: "work",
     });
     store.tick();
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -265,6 +358,34 @@ describe("calendar state, concurrency and safe retries", () => {
     await store.load();
     return store;
   }
+  it.each(TIME_TAGS)("creates records with the fixed $label tag", async ({ id }) => {
+    const store = calendar();
+    store.openCreate();
+    expect(store.getSnapshot().create.tag).toBeNull();
+    store.setCreate("tag", id);
+    fetchMock
+      .mockResolvedValueOnce(Response.json({}))
+      .mockResolvedValueOnce(Response.json({ records: [] }));
+    await store.saveCreate();
+    expect(body(0).tag).toBe(id);
+    store.openCreate();
+    expect(store.getSnapshot().create.tag).toBeNull();
+  });
+  it("restores stored tags and explicitly clears them on edit, then reads the new state", async () => {
+    const store = calendar();
+    fetchMock.mockResolvedValueOnce(Response.json({ records: [{ ...record, tag: "work" }] }));
+    await store.load();
+    store.openEdit(record.id);
+    expect(store.getSnapshot().edit.tag).toBe("work");
+    store.setEdit("tag", null);
+    fetchMock
+      .mockResolvedValueOnce(Response.json({}))
+      .mockResolvedValueOnce(Response.json({ records: [record] }));
+    await store.saveEdit();
+    expect(body(1).tag).toBeNull();
+    store.openEdit(record.id);
+    expect(store.getSnapshot().edit.tag).toBeNull();
+  });
   it("deduplicates initial reads, rejects stale responses and never mixes periods", async () => {
     const store = calendar(),
       a = defer<Response>(),
@@ -460,6 +581,7 @@ describe("calendar state, concurrency and safe retries", () => {
       pending = defer<Response>();
     store.openCreate();
     store.setCreate("description", "original");
+    store.setCreate("tag", "relaxation");
     fetchMock.mockReturnValueOnce(pending.promise);
     const saving = store.saveCreate();
     void store.saveCreate();
@@ -470,7 +592,9 @@ describe("calendar state, concurrency and safe retries", () => {
     await saving;
     const original = body();
     store.setCreate("description", "after");
+    store.setCreate("tag", null);
     expect(store.getSnapshot().create.description).toBe("original");
+    expect(store.getSnapshot().create.tag).toBe("relaxation");
     fetchMock
       .mockResolvedValueOnce(Response.json({}))
       .mockResolvedValueOnce(Response.json({ records: [] }));

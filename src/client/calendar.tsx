@@ -10,6 +10,7 @@ import type { CalendarStore } from "./calendar-store";
 import { MAX_DATE, MIN_DATE, MIN_WEEK_DATE } from "./calendar-store";
 import { Header, Modal } from "./shared";
 import { recordLabel, Timeline } from "./timeline";
+import { TagBadge, TagSelect } from "./tags";
 
 function periodLabel(date: string) {
   return new Intl.DateTimeFormat("ja-JP", {
@@ -255,7 +256,10 @@ export function CalendarScreen({ store }: { store: CalendarStore }) {
                   >
                     <span className="record-main">
                       <span className="record-accent" aria-hidden="true" />
-                      <span className="record-description">{record.description}</span>
+                      <span className="record-details">
+                        <span className="record-description">{record.description}</span>
+                        <TagBadge tag={record.tag} />
+                      </span>
                     </span>
                     <span className="record-time">
                       {`${formatTokyoDateTimeInput(record.startedAtMs).replace("T", " ")} – ${formatTokyoDateTimeInput(record.endedAtMs).replace("T", " ")}`}
@@ -315,6 +319,12 @@ export function CalendarScreen({ store }: { store: CalendarStore }) {
             <p className="edit-help">
               内容は500文字以内、空欄は「無題」で保存します。1件の時間は最大366日です。
             </p>
+            <TagSelect
+              id="edit-tag"
+              value={state.edit.tag}
+              disabled={editLocked}
+              onChange={(tag) => store.setEdit("tag", tag)}
+            />
           </div>
           <div id="edit-error" className="edit-error" role="alert" hidden={!state.editError}>
             <p id="edit-error-text">{state.editError}</p>
@@ -439,6 +449,12 @@ export function CalendarScreen({ store }: { store: CalendarStore }) {
             <p className="edit-help">
               日時は分単位（秒は00）です。内容は500文字以内、空欄は「無題」で保存します。1件の時間は最大366日です。
             </p>
+            <TagSelect
+              id="create-tag"
+              value={state.create.tag}
+              disabled={createLocked}
+              onChange={(tag) => store.setCreate("tag", tag)}
+            />
           </div>
           <div id="create-error" className="edit-error" role="alert" hidden={!state.createError}>
             <p id="create-error-text">{state.createError}</p>

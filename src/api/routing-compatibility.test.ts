@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createBaselineDatabase, insertBaselineRow } from "../../tests/fixtures/local-database";
+import { createCurrentDatabase, insertBaselineRow } from "../../tests/fixtures/local-database";
 import { BASELINE_NOW_MS, savedTimer } from "../../tests/fixtures/toki-baseline";
 import { AccessAuthError } from "../security/access";
 import * as requestAuth from "../security/request";
@@ -13,7 +13,7 @@ const WRITE_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
   "X-Toki-Client": "web",
 };
-let database: ReturnType<typeof createBaselineDatabase>;
+let database: ReturnType<typeof createCurrentDatabase>;
 
 function request(path: string, method = "GET", body?: string, headers = WRITE_HEADERS) {
   return new Request(`${ORIGIN}${path}`, {
@@ -39,7 +39,7 @@ async function expectError(response: Response, status: number, code: string, hea
 }
 
 beforeEach(() => {
-  database = createBaselineDatabase();
+  database = createCurrentDatabase();
   vi.spyOn(database.db, "prepare");
   vi.spyOn(Date, "now").mockReturnValue(BASELINE_NOW_MS);
 });
@@ -136,7 +136,12 @@ describe("Phase 52 routing and middleware compatibility", () => {
       true,
     );
     expect(database.db.prepare).not.toHaveBeenCalled();
-    expect(database.sqlite.prepare("SELECT * FROM time_sessions").get()).toEqual(row);
+    expect(database.sqlite.prepare("SELECT * FROM time_sessions").get()).toEqual({
+      ...row,
+      draft_description: null,
+      tag: null,
+      start_tag: null,
+    });
   });
 
   it.each([4096, 4097])(

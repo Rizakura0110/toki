@@ -1,3 +1,5 @@
+import { isTimeTag, type TimeTag } from "../contracts/tags";
+
 export type MeasurementMode = "stopwatch" | "timer";
 export interface MeasurementSession {
   readonly id: string;
@@ -7,6 +9,8 @@ export interface MeasurementSession {
   readonly deadlineAtMs: number | null;
   readonly endedAtMs: number | null;
   readonly timerSeconds: number | null;
+  readonly draftDescription: string | null;
+  readonly tag: TimeTag | null;
 }
 export interface CalendarRecord {
   readonly id: string;
@@ -16,6 +20,7 @@ export interface CalendarRecord {
   readonly endedAtMs: number;
   readonly description: string;
   readonly version: number;
+  readonly tag: TimeTag | null;
 }
 export interface SessionEnvelope {
   readonly session: MeasurementSession | null;
@@ -42,7 +47,11 @@ function isSession(value: unknown): value is MeasurementSession {
     Number.isSafeInteger(value.startedAtMs) &&
     (value.deadlineAtMs === null || Number.isSafeInteger(value.deadlineAtMs)) &&
     (value.endedAtMs === null || Number.isSafeInteger(value.endedAtMs)) &&
-    (value.timerSeconds === null || Number.isSafeInteger(value.timerSeconds))
+    (value.timerSeconds === null || Number.isSafeInteger(value.timerSeconds)) &&
+    (value.draftDescription === undefined ||
+      value.draftDescription === null ||
+      (typeof value.draftDescription === "string" && value.draftDescription.length <= 500)) &&
+    (value.tag === undefined || value.tag === null || isTimeTag(value.tag))
   );
 }
 export function readSessionEnvelope(value: unknown): SessionEnvelope {
@@ -52,7 +61,17 @@ export function readSessionEnvelope(value: unknown): SessionEnvelope {
     (value.session !== null && !isSession(value.session))
   )
     throw new Error("INVALID_RESPONSE");
-  return value as unknown as SessionEnvelope;
+  const envelope = value as unknown as SessionEnvelope;
+  return {
+    ...envelope,
+    session: envelope.session
+      ? {
+          ...envelope.session,
+          draftDescription: envelope.session.draftDescription ?? null,
+          tag: envelope.session.tag ?? null,
+        }
+      : null,
+  };
 }
 export function readRecords(value: unknown): CalendarRecord[] {
   if (!isObject(value) || !Array.isArray(value.records)) throw new Error("INVALID_RESPONSE");
@@ -65,12 +84,13 @@ export function readRecords(value: unknown): CalendarRecord[] {
       !Number.isSafeInteger(record.startedAtMs) ||
       !Number.isSafeInteger(record.endedAtMs) ||
       typeof record.description !== "string" ||
+      (record.tag !== undefined && record.tag !== null && !isTimeTag(record.tag)) ||
       !Number.isSafeInteger(record.version) ||
       Number(record.version) < 1 ||
       Number(record.endedAtMs) <= Number(record.startedAtMs)
     )
       throw new Error("INVALID_RESPONSE");
-    return record as unknown as CalendarRecord;
+    return { ...record, tag: record.tag ?? null } as unknown as CalendarRecord;
   });
 }
 export async function requestJson(path: string, method = "GET", body?: object): Promise<unknown> {

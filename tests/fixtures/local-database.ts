@@ -11,6 +11,17 @@ export const manualMigration = readFileSync(
   new URL("../../migrations/0002_manual_records.sql", import.meta.url),
   "utf8",
 );
+export const sessionDetailsMigration = readFileSync(
+  new URL("../../migrations/0003_session_details.sql", import.meta.url),
+  "utf8",
+);
+
+/** Current feature schema; leave createBaselineDatabase pinned to the historical 0002 oracle. */
+export function createCurrentDatabase() {
+  const database = createBaselineDatabase();
+  database.sqlite.exec(sessionDetailsMigration);
+  return database;
+}
 
 /** An in-memory SQLite adapter, not a replacement for the Wrangler/D1 smoke gate. */
 export function createBaselineDatabase(migrated = true) {

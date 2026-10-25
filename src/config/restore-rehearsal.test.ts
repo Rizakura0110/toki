@@ -133,6 +133,14 @@ it("privately exports/restores local D1 and rolls back source without losing any
     });
     for (const [index, open] of openSessionScenarios.entries()) {
       await seed(source.env.DB, [savedStopwatch, savedTimer, manualRecord, discardedSession, open]);
+      await source.env.DB.prepare(
+        "UPDATE time_sessions SET draft_description = ?, start_tag = ?, tag = ? WHERE id = ?",
+      )
+        .bind("開始前に入力した内容", "work", "work", open.id)
+        .run();
+      await source.env.DB.prepare("UPDATE time_sessions SET tag = ? WHERE id = ?")
+        .bind("hobby", savedStopwatch.id)
+        .run();
       const before = await snapshot(source.env.DB);
       await source.dispose();
       source = undefined;
@@ -176,9 +184,11 @@ it("privately exports/restores local D1 and rolls back source without losing any
       expect((await db.prepare("PRAGMA foreign_key_check").all()).results).toEqual([]);
 
       // New writes, then an old-source rollback, all against the SAME restored schema.
-      expect(await modern.getCurrentSession(db, NOW)).toEqual(
-        await legacy.getCurrentSession(db, NOW),
-      );
+      expect(await modern.getCurrentSession(db, NOW)).toEqual({
+        ...(await legacy.getCurrentSession(db, NOW)),
+        draftDescription: "開始前に入力した内容",
+        tag: "work",
+      });
       const edited = await modern.editSavedRecord(
         db,
         savedStopwatch.id,
@@ -187,15 +197,40 @@ it("privately exports/restores local D1 and rolls back source without losing any
           endedAtMs: savedStopwatch.ended_at_ms ?? NOW,
           description: "新版で変更・旧版で継続",
           expectedVersion: savedStopwatch.version,
+          tag: "relaxation",
         },
         NOW,
       );
-      expect(await legacy.getSession(db, edited.id, NOW)).toEqual(edited);
+      expect(edited).toEqual({
+        ...(await legacy.getSession(db, edited.id, NOW)),
+        draftDescription: null,
+        tag: "relaxation",
+      });
+      // The old source does not expose new fields, but must preserve them on writes.
+      await legacy.editSavedRecord(
+        db,
+        edited.id,
+        {
+          startedAtMs: edited.startedAtMs,
+          endedAtMs: edited.endedAtMs ?? NOW,
+          description: "旧版で編集してもタグを保持",
+          expectedVersion: edited.version,
+        },
+        NOW + 1,
+      );
+      expect((await modern.getSession(db, edited.id, NOW + 2))?.tag).toBe("relaxation");
       const stopped = await legacy.stopSession(db, open.id, NOW + 2_000);
       const saved = await legacy.saveSession(db, stopped.id, "", NOW + 2_001);
       expect(saved.description).toBe("無題");
-      expect(await modern.getSession(db, saved.id, NOW + 2_002)).toEqual(saved);
-      await legacy.deleteSavedRecord(db, edited.id, edited.version);
+      expect(await modern.getSession(db, saved.id, NOW + 2_002)).toEqual({
+        ...saved,
+        draftDescription: "開始前に入力した内容",
+        tag: "work",
+      });
+      expect(
+        await db.prepare("SELECT start_tag FROM time_sessions WHERE id = ?").bind(open.id).first(),
+      ).toEqual({ start_tag: "work" });
+      await legacy.deleteSavedRecord(db, edited.id, edited.version + 1);
       await expect(
         modern.startSession(
           db,

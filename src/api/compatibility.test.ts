@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createBaselineDatabase, insertBaselineRow } from "../../tests/fixtures/local-database";
+import { createCurrentDatabase, insertBaselineRow } from "../../tests/fixtures/local-database";
 import {
   BASELINE_NOW_MS,
   BASELINE_START_MS,
   discardedSession,
-  expectedSession,
+  expectedSession as expectedLegacySession,
   manualRecord,
   openSessionScenarios,
   savedStopwatch,
@@ -14,7 +14,12 @@ import { handleApiRequest } from "./router";
 
 const ORIGIN = "http://127.0.0.1:8787";
 const REQUEST_ID = "30000000-0000-4000-8000-000000000001";
-let database: ReturnType<typeof createBaselineDatabase>;
+let database: ReturnType<typeof createCurrentDatabase>;
+
+// The two additive response fields are intentional; all historical fields stay exact.
+function expectedSession(row: Parameters<typeof expectedLegacySession>[0]) {
+  return { ...expectedLegacySession(row), draftDescription: null, tag: null };
+}
 
 function call(path: string, method = "GET", body?: unknown, headers?: HeadersInit) {
   return handleApiRequest(
@@ -41,7 +46,7 @@ async function expectJson(response: Response, status: number, body: unknown) {
 }
 
 beforeEach(() => {
-  database = createBaselineDatabase();
+  database = createCurrentDatabase();
   vi.spyOn(Date, "now").mockReturnValue(BASELINE_NOW_MS);
 });
 
@@ -94,6 +99,8 @@ describe("Phase 50 HTTP compatibility with real SQLite and synthetic records", (
       deadlineAtMs: null,
       endedAtMs: null,
       description: null,
+      draftDescription: null,
+      tag: null,
       version: 1,
       createdAtMs: BASELINE_NOW_MS,
       updatedAtMs: BASELINE_NOW_MS,
@@ -242,7 +249,12 @@ describe("Phase 50 HTTP compatibility with real SQLite and synthetic records", (
       400,
       { error: { code: "VALIDATION" } },
     );
-    expect(database.sqlite.prepare("SELECT * FROM time_sessions").get()).toEqual(row);
+    expect(database.sqlite.prepare("SELECT * FROM time_sessions").get()).toEqual({
+      ...row,
+      draft_description: null,
+      tag: null,
+      start_tag: null,
+    });
   });
 
   it.each([

@@ -1,10 +1,12 @@
 import { z } from "zod";
+import { isTimeTag, type TimeTag } from "./tags";
 
 const MAX_TIMESTAMP_MS = 8_640_000_000_000_000;
 const MAX_RECORD_OR_QUERY_DURATION_MS = 366 * 24 * 60 * 60 * 1_000;
 
 const epochMsSchema = z.int().positive().max(MAX_TIMESTAMP_MS);
 const descriptionSchema = z.string().trim().max(500);
+const tagSchema = z.custom<TimeTag>(isTimeTag).nullable().optional();
 
 export const sessionIdSchema = z.uuid();
 export const recordIdSchema = sessionIdSchema;
@@ -15,16 +17,21 @@ export const startSessionSchema = z.discriminatedUnion("mode", [
   z.strictObject({
     mode: z.literal("stopwatch"),
     clientRequestId: clientRequestIdSchema,
+    description: descriptionSchema.optional(),
+    tag: tagSchema,
   }),
   z.strictObject({
     mode: z.literal("timer"),
     timerSeconds: z.int().min(1).max(86_400),
     clientRequestId: clientRequestIdSchema,
+    description: descriptionSchema.optional(),
+    tag: tagSchema,
   }),
 ]);
 
 export const saveSessionSchema = z.strictObject({
   description: descriptionSchema,
+  tag: tagSchema,
 });
 
 function validRecordInterval<Fields extends { startedAtMs: number; endedAtMs: number }>(
@@ -47,6 +54,7 @@ export const createRecordSchema = validRecordInterval(
     endedAtMs: epochMsSchema,
     description: descriptionSchema,
     clientRequestId: clientRequestIdSchema,
+    tag: tagSchema,
   }),
 );
 
@@ -56,6 +64,7 @@ export const editRecordSchema = validRecordInterval(
     endedAtMs: epochMsSchema,
     description: descriptionSchema,
     expectedVersion: z.int().positive(),
+    tag: tagSchema,
   }),
 );
 
